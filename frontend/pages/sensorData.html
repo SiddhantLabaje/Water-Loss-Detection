@@ -1,0 +1,49 @@
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sensor Data</title>
+</head>
+
+<body>
+
+    <h1>To Get Sensor Data Click Following Button</h1>
+
+    <button onclick="getSensrData()">Sensor Data</button>
+
+    <div id="data"></div>
+
+
+<script>
+async function getSensrData() {
+
+    try {
+
+        const response = await fetch(
+            'http://localhost:5000/api/sensors/sensor-data'
+        );
+
+        const sensors = await response.json();
+
+        const data = document.getElementById('data');
+
+        data.innerHTML = "";
+
+        for (let i = 0; i < sensors.length; i++) 
+        { data.innerHTML += 
+            "Flow: " + sensors[i].flowSensorData + "<br>" + "Pressure: " + sensors[i].pressureSensorData + "<br>" + "Tank Level: " + sensors[i].tankLevelSensorData + "<br>" + "Prediction: " + sensors[i].predictionData + "<br><hr>"; };
+            alert("Data Showed")
+    } catch (error) {
+
+        console.error("Error While Showing Sensor Data", error);
+
+    }
+
+}
+</script>
+</body>
+
+</html>
