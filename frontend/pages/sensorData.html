@@ -10,6 +10,8 @@
 
 <body>
 
+    
+
     <h1>To Get Sensor Data Click Following Button</h1>
 
     <button onclick="getSensrData()">Sensor Data</button>
@@ -34,7 +36,7 @@ async function getSensrData() {
 
         for (let i = 0; i < sensors.length; i++) 
         { data.innerHTML += 
-            "Flow: " + sensors[i].flowSensorData + "<br>" + "Pressure: " + sensors[i].pressureSensorData + "<br>" + "Tank Level: " + sensors[i].tankLevelSensorData + "<br>" + "Prediction: " + sensors[i].predictionData + "<br><hr>"; };
+            "Flow: " + sensors[i].flowSensorData + "<br>" + "Pressure: " + sensors[i].pressureSensorData + "<br>" + "Tank Level: " + sensors[i].tankLevelSensorData + "<br>" + "Prediction: " + sensors[i].predictionData + "<br>"+"Turbidity: " + sensors[i].turbiditySensorData + "<br><hr>"; };
             alert("Data Showed")
     } catch (error) {
 

@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alerts — Smart Water Monitor</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+
+<!-- ═══ SIDEBAR ═══════════════════════════════════════ -->
+<aside class="sidebar">
+  <div class="sb-brand">
+    <div class="sb-logo">
+      <svg viewBox="0 0 24 24" fill="#fff"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/></svg>
+    </div>
+    <div>
+      <div class="sb-name">Smart Water</div>
+      <div class="sb-sub">AI Monitor v1.0</div>
+    </div>
+  </div>
+  <div class="sb-section-label">Navigation</div>
+  <nav>
+    <a href="index.html">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+      <span>Dashboard</span>
+    </a>
+    <a href="sensors.html">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+      <span>Sensors</span>
+    </a>
+    <a href="predictions.html">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 21H5c-1.1 0-2-.9-2-2V5c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2v14c0 1.1-.9 2-2 2zm10-9h-4c-1.1 0-2 .9-2 2v5c0 1.1.9 2 2 2h4c1.1 0 2-.9 2-2v-5c0-1.1-.9-2-2-2zm0-8h-4c-1.1 0-2 .9-2 2v3c0 1.1.9 2 2 2h4c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2z"/></svg>
+      <span>Predictions</span>
+    </a>
+    <a href="analytics.html">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>
+      <span>Analytics</span>
+    </a>
+    <a href="alerts.html" class="active">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+      <span>Alerts</span>
+    </a>
+  </nav>
+  <div class="sb-footer">
+    <div class="sb-conn">
+      <span id="conn-dot" class="dot dot-wait"></span>
+      <span id="conn-label">Connecting</span>
+    </div>
+  </div>
+</aside>
+
+<!-- ═══ MAIN ═══════════════════════════════════════════ -->
+<div class="main">
+  <header class="topbar">
+    <div class="topbar-left">
+      <h1>Alerts</h1>
+      <p>Critical and warning events from the ML pipeline</p>
+    </div>
+    <div class="topbar-right">
+      <span id="updated" class="muted-2 small">—</span>
+      <label class="muted small" for="limit-sel" style="white-space:nowrap">Show:</label>
+      <select id="limit-sel" onchange="manualRefresh()">
+        <option value="10">Last 10</option>
+        <option value="25">Last 25</option>
+        <option value="50">Last 50</option>
+        <option value="100">Last 100</option>
+      </select>
+      <div id="live-pill" class="live-pill" onclick="togglePause()" title="Click to pause / resume auto-refresh">
+        <div class="lp-spin"></div>
+        <div class="lp-dot"></div>
+        <span class="lp-label">Live</span>
+        <span id="lp-cd" class="lp-countdown">30s</span>
+      </div>
+      <button class="btn" onclick="manualRefresh()">Refresh now</button>
+    </div>
+    <div id="live-bar" class="live-bar"></div>
+  </header>
+
+  <div class="content">
+
+    <!-- Summary KPIs -->
+    <section>
+      <div class="sec-header"><span class="sec-title">Alert Summary</span></div>
+      <div class="g3">
+        <div class="kpi-card kpi-red">
+          <div class="kpi-label">Critical Alerts</div>
+          <div id="cnt-critical" class="kpi-value">—</div>
+          <div class="kpi-unit">in selected range</div>
+        </div>
+        <div class="kpi-card kpi-amber">
+          <div class="kpi-label">Warning Alerts</div>
+          <div id="cnt-warning" class="kpi-value">—</div>
+          <div class="kpi-unit">in selected range</div>
+        </div>
+        <div class="kpi-card kpi-blue">
+          <div class="kpi-label">Total Shown</div>
+          <div id="cnt-total" class="kpi-value">—</div>
+          <div class="kpi-unit">records loaded</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Alert Feed -->
+    <section>
+      <div class="sec-header"><span class="sec-title">Alert Events</span></div>
+      <div id="alert-feed">
+        <div class="card"><div class="loading">Loading alerts...</div></div>
+      </div>
+    </section>
+
+    <!-- Alert Details Table -->
+    <section>
+      <div class="sec-header"><span class="sec-title">Alert Details</span></div>
+      <div class="card table-card">
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Timestamp</th>
+                <th>Status</th>
+                <th>Prediction</th>
+                <th>Probability</th>
+                <th>Severity</th>
+                <th>Flow (L/min)</th>
+                <th>Pressure (PSI)</th>
+                <th>Tank (%)</th>
+                <th>Turbidity (NTU)</th>
+                <th>Loss (L/hr)</th>
+                <th>Flow Anom.</th>
+                <th>Press. Anom.</th>
+                <th>Tank Anom.</th>
+              </tr>
+            </thead>
+            <tbody id="alert-body">
+              <tr><td colspan="14" class="loading">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<script>
+'use strict';
+const API = 'http://localhost:5000/api';
+
+/* ══════════════════════════════════════════════
+   LIVE REFRESH ENGINE  (interval = 30 s)
+══════════════════════════════════════════════ */
+const INTERVAL = 30;
+let   remaining  = INTERVAL;
+let   paused     = false;
+let   fetchingNow = false;
+let   tickTimer  = null;
+
+function startLive() {
+  remaining = INTERVAL;
+  clearInterval(tickTimer);
+  tickTimer = setInterval(tick, 1000);
+  updateBar();
+}
+function tick() {
+  if (paused || fetchingNow) return;
+  remaining--;
+  updateBar();
+  if (!paused) document.getElementById('lp-cd').textContent = remaining + 's';
+  if (remaining <= 0) { remaining = INTERVAL; doFetch(); }
+}
+function togglePause() {
+  paused = !paused;
+  const pill = document.getElementById('live-pill');
+  pill.classList.toggle('paused', paused);
+  document.getElementById('lp-cd').textContent = paused ? 'Paused' : remaining + 's';
+  document.getElementById('live-bar').classList.toggle('paused', paused);
+}
+function manualRefresh() { remaining = INTERVAL; doFetch(); }
+async function doFetch() {
+  if (fetchingNow) return;
+  fetchingNow = true;
+  const pill = document.getElementById('live-pill');
+  pill.classList.add('fetching');
+  await load();
+  fetchingNow = false;
+  pill.classList.remove('fetching');
+  if (!paused) document.getElementById('lp-cd').textContent = remaining + 's';
+}
+function updateBar() {
+  const pct = ((INTERVAL - remaining) / INTERVAL) * 100;
+  document.getElementById('live-bar').style.transform = `scaleX(${(100 - pct) / 100})`;
+}
+
+doFetch();
+startLive();
+
+async function load() {
+  const limit = el('limit-sel').value;
+  try {
+    const list = await api(`/ml-predictions/alerts?limit=${limit}`);
+    setConn(true);
+    renderSummary(list);
+    renderFeed(list);
+    renderTable(list);
+    el('updated').textContent = 'Last updated ' + new Date().toLocaleTimeString();
+  } catch (e) {
+    setConn(false);
+    el('updated').textContent = 'Update failed';
+  }
+}
+
+function renderSummary(list) {
+  if (!list) { el('cnt-critical').textContent = el('cnt-warning').textContent = el('cnt-total').textContent = '—'; return; }
+  el('cnt-critical').textContent = list.filter(a => a.overallSystemStatus === 'CRITICAL').length;
+  el('cnt-warning').textContent  = list.filter(a => a.overallSystemStatus === 'WARNING').length;
+  el('cnt-total').textContent    = list.length;
+}
+
+function renderFeed(list) {
+  const wrap = el('alert-feed');
+  if (!list || list.length === 0) {
+    wrap.innerHTML = '<div class="card"><div class="empty-state">No alerts found — system is operating normally.</div></div>';
+    return;
+  }
+
+  wrap.innerHTML = '<div class="alert-feed">' + list.map(a => {
+    const s = (a.overallSystemStatus || '').toLowerCase();
+    return `<div class="alert-row al-${s}">
+      <div class="al-accent"></div>
+      <div class="al-body">
+        <div class="al-header">
+          <span class="al-title">${s.toUpperCase()}</span>
+          <span class="al-time">${fmtTime(a.mlProcessedAt)}</span>
+        </div>
+        <div class="al-grid">
+          <div class="al-grid-item">
+            <div class="al-field">Prediction</div>
+            <div>${a.mlPredictionData === 1
+              ? '<span class="badge b-red">Leak Detected</span>'
+              : '<span class="badge b-green">No Leak</span>'}</div>
+          </div>
+          <div class="al-grid-item">
+            <div class="al-field">Probability</div>
+            <div style="font-weight:600">${f1(a.mlProbability)}%</div>
+          </div>
+          <div class="al-grid-item">
+            <div class="al-field">Severity</div>
+            <div>${sevBadge((a.mlSeverity || '').toLowerCase())}</div>
+          </div>
+          <div class="al-grid-item">
+            <div class="al-field">Water Loss</div>
+            <div style="font-weight:600">${f2(a.waterLossRate)} L/hr</div>
+          </div>
+          <div class="al-grid-item">
+            <div class="al-field">Flow Rate</div>
+            <div>${f1(a.flowSensorData)} L/min</div>
+          </div>
+          <div class="al-grid-item">
+            <div class="al-field">Pressure</div>
+            <div>${f1(a.pressureSensorData)} PSI</div>
+          </div>
+          <div class="al-grid-item">
+            <div class="al-field">Tank Level</div>
+            <div>${f1(a.tankLevelSensorData)}%</div>
+          </div>
+          <div class="al-grid-item">
+            <div class="al-field">Turbidity</div>
+            <div>${f1(a.turbiditySensorData)} NTU</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('') + '</div>';
+}
+
+function renderTable(list) {
+  const tb = el('alert-body');
+  if (!list || list.length === 0) {
+    tb.innerHTML = '<tr><td colspan="14" class="empty-state">No alerts found.</td></tr>';
+    return;
+  }
+  tb.innerHTML = list.map((a, i) => {
+    const s   = (a.overallSystemStatus || '').toLowerCase();
+    const sev = (a.mlSeverity || '').toLowerCase();
+    return `<tr>
+      <td class="muted small">${i + 1}</td>
+      <td class="mono small">${fmtTime(a.mlProcessedAt)}</td>
+      <td>${s === 'critical'
+        ? '<span class="badge b-red">Critical</span>'
+        : '<span class="badge b-amber">Warning</span>'}</td>
+      <td>${a.mlPredictionData === 1
+        ? '<span class="badge b-red">Leak</span>'
+        : '<span class="badge b-green">Normal</span>'}</td>
+      <td>${f1(a.mlProbability)}%</td>
+      <td>${sevBadge(sev)}</td>
+      <td>${f1(a.flowSensorData)}</td>
+      <td>${f1(a.pressureSensorData)}</td>
+      <td>${f1(a.tankLevelSensorData)}</td>
+      <td>${f1(a.turbiditySensorData)}</td>
+      <td>${f2(a.waterLossRate)}</td>
+      <td>${anomBadge(a.flowAnomaly)}</td>
+      <td>${anomBadge(a.pressureAnomaly)}</td>
+      <td>${anomBadge(a.tankLevelAnomaly)}</td>
+    </tr>`;
+  }).join('');
+}
+
+/* ── Helpers ──────────────────────────────────── */
+function anomBadge(v)   { return v === 'ABNORMAL' ? '<span class="badge b-red">Abnormal</span>' : '<span class="badge b-green">Normal</span>'; }
+function sevBadge(s)    { return s === 'high' ? '<span class="badge b-red">High</span>' : s === 'medium' ? '<span class="badge b-amber">Medium</span>' : s ? `<span class="badge b-green">${cap(s)}</span>` : '—'; }
+function cap(s)         { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
+function f1(v)          { return (v == null || isNaN(+v)) ? '—' : (+v).toFixed(1); }
+function f2(v)          { return (v == null || isNaN(+v)) ? '—' : (+v).toFixed(2); }
+function fmtTime(raw)   { if (!raw) return '—'; try { const d = new Date(raw); return isNaN(d) ? String(raw) : d.toLocaleString(); } catch { return String(raw); } }
+async function api(path){ const r = await fetch(API + path); if (!r.ok) throw new Error(r.status); return r.json(); }
+function el(id)         { return document.getElementById(id); }
+function setConn(ok)    { el('conn-dot').className = ok ? 'dot dot-ok' : 'dot dot-err'; el('conn-label').textContent = ok ? 'Connected' : 'Offline'; }
+</script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+{
+  "model_type": "RandomForestClassifier",
+  "features": [
+    "flowSensorData",
+    "pressureSensorData",
+    "tankLevelSensorData"
+  ],
+  "target": "predictionData",
+  "labels": {
+    "0": "NORMAL",
+    "1": "LEAK"
+  },
+  "config": {
+    "n_estimators": 100,
+    "random_state": 42,
+    "class_weight": "balanced"
+  },
+  "trained_at": "2026-09-11T05:07:53.062346+00:00",
+  "n_estimators": 100,
+  "n_features": 3,
+  "recall": 0.9359,
+  "f1_score": 0.9279,
+  "precision": 0.921,
+  "accuracy": 0.938
+}

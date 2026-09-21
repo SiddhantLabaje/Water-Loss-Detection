@@ -23,6 +23,7 @@ const thingsSpeakDataFetch = async () => {
                 pressureSensorData: Number(feed.field2),
                 tankLevelSensorData: Number(feed.field3),
                 predictionData: Number(feed.field4),
+                turbiditySensorData: Number(feed.field5),
             });
         }
 

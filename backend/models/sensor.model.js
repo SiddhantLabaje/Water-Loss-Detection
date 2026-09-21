@@ -18,10 +18,14 @@ const sensorSchema=new mongoose.Schema({
         required:true,
         type:Number
     },
+    turbiditySensorData:{
+        required:true,
+        type:Number
+    },
     predictionData:{
         required:true,
         type:Number
-    }
+    },
 },{timestamps:true});
 
 const Sensor = mongoose.model("Sensor", sensorSchema);

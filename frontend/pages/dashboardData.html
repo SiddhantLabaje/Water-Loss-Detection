@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Data</title>
+</head>
+<body>
+    <h1>To Get Dashboard Data Click Following Button</h1>
+
+    <button onclick="getDashboardData()">Dashboard Data</button>
+
+    <div id="data"></div>
+
+    <script>
+        async function getDashboardData() {
+            try {
+                const response = await fetch("http://localhost:5000/api/dashboard/cleaned-sensor-data");
+                const d = await response.json();
+
+                const data = document.getElementById("data");
+                data.innerHTML = "";
+
+                if (d.message) {
+                    data.innerHTML = "<p>" + d.message + "</p>";
+                    return;
+                }
+
+                data.innerHTML =
+                    "<h2>Date: " + d.date + "</h2>" +
+
+                    "<h3>Live Sensor</h3>" +
+                    "Flow Rate: "   + d.liveSensor.flowRate    + "<br>" +
+                    "Pressure: "    + d.liveSensor.pressure    + "<br>" +
+                    "Water Level: " + d.liveSensor.waterLevel  + "<br>" +
+                    "Turbidity: "   + d.liveSensor.turbidity   + "<br>" +
+                    "Last Updated: "+ d.liveSensor.lastUpdated + "<br>" +
+
+                    "<h3>Leak Analysis</h3>" +
+                    "Leak Status: "      + d.leakAnalysis.leakStatus      + "<br>" +
+                    "Leak Detected: "    + d.leakAnalysis.leakDetected    + "<br>" +
+                    "Leak Probability: " + d.leakAnalysis.leakProbability + "<br>" +
+                    "Leak Severity: "    + d.leakAnalysis.leakSeverity    + "<br>" +
+
+                    "<h3>Loss Analysis</h3>" +
+                    "Estimated Loss (LPH): " + d.lossAnalysis.estimatedLossLPH + "<br>" +
+                    "Leak Zone: "            + d.lossAnalysis.leakZone         + "<br>" +
+
+                    "<h3>Consumption Today</h3>" +
+                    "Total Litres: "     + d.consumptionToday.totalLitres    + "<br>" +
+                    "Estimated Loss: "   + d.consumptionToday.estimatedLossL + "<br>" +
+                    "Loss Percentage: "  + d.consumptionToday.lossPercentage + "%" + "<br>" +
+
+                    "<h3>Forecast</h3>" +
+                    "Predicted Tomorrow (L): " + d.forecast.predictedTomorrowLitres + "<br>" +
+                    "Expected Loss (L): "      + d.forecast.expectedLossLitres      + "<br>" +
+
+                    "<h3>System Status</h3>" +
+                    "ML Model Active: "      + d.systemStatus.mlModelActive     + "<br>" +
+                    "Total Records Today: "  + d.systemStatus.totalRecordsToday + "<br>" +
+                    "Leak Records Today: "   + d.systemStatus.leakRecordsToday  + "<br>";
+
+                alert("Data Showed");
+
+            } catch (error) {
+                console.error("Error While Showing the DashBoard Data", error);
+            }
+        }
+    </script>
+</body>
+</html>

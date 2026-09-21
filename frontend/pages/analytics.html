@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Analytics — Smart Water Monitor</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+
+<!-- ═══ SIDEBAR ═══════════════════════════════════════ -->
+<aside class="sidebar">
+  <div class="sb-brand">
+    <div class="sb-logo">
+      <svg viewBox="0 0 24 24" fill="#fff"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/></svg>
+    </div>
+    <div>
+      <div class="sb-name">Smart Water</div>
+      <div class="sb-sub">AI Monitor v1.0</div>
+    </div>
+  </div>
+  <div class="sb-section-label">Navigation</div>
+  <nav>
+    <a href="index.html">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+      <span>Dashboard</span>
+    </a>
+    <a href="sensors.html">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+      <span>Sensors</span>
+    </a>
+    <a href="predictions.html">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 21H5c-1.1 0-2-.9-2-2V5c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2v14c0 1.1-.9 2-2 2zm10-9h-4c-1.1 0-2 .9-2 2v5c0 1.1.9 2 2 2h4c1.1 0 2-.9 2-2v-5c0-1.1-.9-2-2-2zm0-8h-4c-1.1 0-2 .9-2 2v3c0 1.1.9 2 2 2h4c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2z"/></svg>
+      <span>Predictions</span>
+    </a>
+    <a href="analytics.html" class="active">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>
+      <span>Analytics</span>
+    </a>
+    <a href="alerts.html">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+      <span>Alerts</span>
+    </a>
+  </nav>
+  <div class="sb-footer">
+    <div class="sb-conn">
+      <span id="conn-dot" class="dot dot-wait"></span>
+      <span id="conn-label">Connecting</span>
+    </div>
+  </div>
+</aside>
+
+<!-- ═══ MAIN ═══════════════════════════════════════════ -->
+<div class="main">
+  <header class="topbar">
+    <div class="topbar-left">
+      <h1>Analytics</h1>
+      <p>Daily consumption, forecast &amp; leak analysis</p>
+    </div>
+    <div class="topbar-right">
+      <span id="updated" class="muted-2 small">—</span>
+      <div id="live-pill" class="live-pill" onclick="togglePause()" title="Click to pause / resume auto-refresh">
+        <div class="lp-spin"></div>
+        <div class="lp-dot"></div>
+        <span class="lp-label">Live</span>
+        <span id="lp-cd" class="lp-countdown">30s</span>
+      </div>
+      <button class="btn" onclick="manualRefresh()">Refresh now</button>
+    </div>
+    <div id="live-bar" class="live-bar"></div>
+  </header>
+
+  <div class="content">
+
+    <!-- Today's Overview -->
+    <section>
+      <div class="sec-header"><span class="sec-title">Today's Overview</span></div>
+      <div class="g4" id="today-wrap">
+        <div class="kpi-card"><div class="loading">Loading...</div></div>
+      </div>
+    </section>
+
+    <!-- Live Sensor Snapshot -->
+    <section>
+      <div class="sec-header"><span class="sec-title">Live Sensor Snapshot</span></div>
+      <div class="g4" id="sensor-wrap">
+        <div class="kpi-card"><div class="loading">Loading...</div></div>
+      </div>
+    </section>
+
+    <!-- Leak & Loss Analysis -->
+    <section>
+      <div class="sec-header"><span class="sec-title">Leak &amp; Loss Analysis</span></div>
+      <div class="g2">
+        <div class="card">
+          <div class="card-title">Leak Analysis</div>
+          <table class="info-table" id="leak-table">
+            <tr><td colspan="2" class="loading">Loading...</td></tr>
+          </table>
+        </div>
+        <div class="card">
+          <div class="card-title">Loss Analysis</div>
+          <table class="info-table" id="loss-table">
+            <tr><td colspan="2" class="loading">Loading...</td></tr>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Forecast -->
+    <section>
+      <div class="sec-header"><span class="sec-title">Forecast</span></div>
+      <div class="g3" id="forecast-wrap">
+        <div class="kpi-card"><div class="loading">Loading...</div></div>
+      </div>
+    </section>
+
+    <!-- System Status -->
+    <section>
+      <div class="sec-header"><span class="sec-title">System Status</span></div>
+      <div class="g3" id="sysstat-wrap">
+        <div class="kpi-card"><div class="loading">Loading...</div></div>
+      </div>
+    </section>
+
+    <!-- 14-Day Charts -->
+    <section>
+      <div class="sec-header"><span class="sec-title">14-Day History</span></div>
+      <div class="g2">
+        <div class="card">
+          <div class="card-title">Daily Total Consumption (Litres)</div>
+          <div class="chart-wrap"><canvas id="chart-consumption"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Daily Estimated Loss (Litres)</div>
+          <div class="chart-wrap"><canvas id="chart-loss-hist"></canvas></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- History Table -->
+    <section>
+      <div class="sec-header"><span class="sec-title">14-Day Analytics History</span></div>
+      <div class="card table-card">
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Flow (L/min)</th>
+                <th>Pressure (PSI)</th>
+                <th>Water Level (%)</th>
+                <th>Turbidity (NTU)</th>
+                <th>Leak Status</th>
+                <th>Loss (L/hr)</th>
+                <th>Total Today (L)</th>
+                <th>Est. Loss (L)</th>
+                <th>Loss %</th>
+                <th>Pred. Tomorrow (L)</th>
+                <th>ML Active</th>
+              </tr>
+            </thead>
+            <tbody id="hist-body">
+              <tr><td colspan="12" class="loading">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<script>
+'use strict';
+const API = 'http://localhost:5000/api';
+let chartC, chartL;
+
+/* ══════════════════════════════════════════════
+   LIVE REFRESH ENGINE  (interval = 30 s)
+══════════════════════════════════════════════ */
+const INTERVAL = 30;
+let   remaining  = INTERVAL;
+let   paused     = false;
+let   fetchingNow = false;
+let   tickTimer  = null;
+
+function startLive() {
+  remaining = INTERVAL;
+  clearInterval(tickTimer);
+  tickTimer = setInterval(tick, 1000);
+  updateBar();
+}
+function tick() {
+  if (paused || fetchingNow) return;
+  remaining--;
+  updateBar();
+  if (!paused) document.getElementById('lp-cd').textContent = remaining + 's';
+  if (remaining <= 0) { remaining = INTERVAL; doFetch(); }
+}
+function togglePause() {
+  paused = !paused;
+  const pill = document.getElementById('live-pill');
+  pill.classList.toggle('paused', paused);
+  document.getElementById('lp-cd').textContent = paused ? 'Paused' : remaining + 's';
+  document.getElementById('live-bar').classList.toggle('paused', paused);
+}
+function manualRefresh() { remaining = INTERVAL; doFetch(); }
+async function doFetch() {
+  if (fetchingNow) return;
+  fetchingNow = true;
+  const pill = document.getElementById('live-pill');
+  pill.classList.add('fetching');
+  await load();
+  fetchingNow = false;
+  pill.classList.remove('fetching');
+  if (!paused) document.getElementById('lp-cd').textContent = remaining + 's';
+}
+function updateBar() {
+  const pct = ((INTERVAL - remaining) / INTERVAL) * 100;
+  document.getElementById('live-bar').style.transform = `scaleX(${(100 - pct) / 100})`;
+}
+
+doFetch();
+startLive();
+
+async function load() {
+  try {
+    const [latest, history] = await Promise.all([
+      api('/dashboard/latest-analytics').catch(() => null),
+      api('/dashboard/analytics-history').catch(() => null),
+    ]);
+    setConn(true);
+    renderLatest(latest);
+    if (history) {
+      buildCharts(history);
+      renderHistRows(history);
+    }
+    el('updated').textContent = 'Last updated ' + new Date().toLocaleTimeString();
+  } catch (e) {
+    setConn(false);
+    el('updated').textContent = 'Update failed';
+  }
+}
+
+function renderLatest(d) {
+  const noData = (wrap, msg) => { el(wrap).innerHTML = `<div class="kpi-card"><p class="muted">${msg}</p></div>`; };
+
+  if (!d || d.message) {
+    const msg = (d && d.message) || 'No analytics data found. Ensure the analytics pipeline is running.';
+    noData('today-wrap', msg);
+    noData('sensor-wrap', 'No sensor data.');
+    noData('forecast-wrap', 'No forecast data.');
+    noData('sysstat-wrap', 'No status data.');
+    el('leak-table').innerHTML = '<tr><td class="muted" colspan="2">No data available.</td></tr>';
+    el('loss-table').innerHTML = '<tr><td class="muted" colspan="2">No data available.</td></tr>';
+    return;
+  }
+
+  /* Today consumption */
+  const c = d.consumptionToday || {};
+  el('today-wrap').innerHTML = `
+    <div class="kpi-card kpi-blue">
+      <div class="kpi-label">Total Consumption Today</div>
+      <div class="kpi-value">${fN(c.totalLitres)}</div>
+      <div class="kpi-unit">Litres</div>
+    </div>
+    <div class="kpi-card kpi-red">
+      <div class="kpi-label">Estimated Loss Today</div>
+      <div class="kpi-value">${fN(c.estimatedLossL)}</div>
+      <div class="kpi-unit">Litres</div>
+    </div>
+    <div class="kpi-card kpi-amber">
+      <div class="kpi-label">Loss Percentage</div>
+      <div class="kpi-value">${fN(c.lossPercentage)}</div>
+      <div class="kpi-unit">%</div>
+    </div>
+    <div class="kpi-card kpi-teal">
+      <div class="kpi-label">Report Date</div>
+      <div class="kpi-value" style="font-size:18px;letter-spacing:0">${d.date || '—'}</div>
+      <div class="kpi-unit">Updated ${d.updatedAt ? new Date(d.updatedAt).toLocaleTimeString() : '—'}</div>
+    </div>`;
+
+  /* Live sensor */
+  const s = d.liveSensor || {};
+  el('sensor-wrap').innerHTML = `
+    <div class="kpi-card kpi-blue">
+      <div class="kpi-label">Flow Rate</div>
+      <div class="kpi-value">${fN(s.flowRate)}</div>
+      <div class="kpi-unit">L / min</div>
+    </div>
+    <div class="kpi-card kpi-violet">
+      <div class="kpi-label">Pressure</div>
+      <div class="kpi-value">${fN(s.pressure)}</div>
+      <div class="kpi-unit">PSI</div>
+    </div>
+    <div class="kpi-card kpi-teal">
+      <div class="kpi-label">Water Level</div>
+      <div class="kpi-value">${fN(s.waterLevel)}</div>
+      <div class="kpi-unit">%</div>
+    </div>
+    <div class="kpi-card kpi-amber">
+      <div class="kpi-label">Turbidity</div>
+      <div class="kpi-value">${fN(s.turbidity)}</div>
+      <div class="kpi-unit">NTU</div>
+    </div>`;
+
+  /* Leak analysis */
+  const la = d.leakAnalysis || {};
+  el('leak-table').innerHTML = `
+    <tr>
+      <td>Status</td>
+      <td>${la.leakStatus
+        ? `<span class="badge ${la.leakDetected ? 'b-red' : 'b-green'}">${la.leakStatus}</span>`
+        : '—'}</td>
+    </tr>
+    <tr>
+      <td>Leak Detected</td>
+      <td>${la.leakDetected != null
+        ? (la.leakDetected ? '<span class="badge b-red">Yes</span>' : '<span class="badge b-green">No</span>')
+        : '—'}</td>
+    </tr>
+    <tr><td>Probability</td><td>${fN(la.leakProbability)}${la.leakProbability != null ? '%' : ''}</td></tr>
+    <tr><td>Severity</td><td>${la.leakSeverity ? `<span class="badge ${la.leakSeverity.toLowerCase()==='high'?'b-red':la.leakSeverity.toLowerCase()==='medium'?'b-amber':'b-green'}">${la.leakSeverity}</span>` : '—'}</td></tr>
+    <tr><td>Estimation Method</td><td class="muted small">${la.estimationMethod || '—'}</td></tr>`;
+
+  /* Loss analysis */
+  const lo = d.lossAnalysis || {};
+  el('loss-table').innerHTML = `
+    <tr><td>Estimated Loss</td><td>${fN(lo.estimatedLossLPH)} L/hr</td></tr>
+    <tr><td>Leak Zone</td><td>${lo.leakZone || '—'}</td></tr>
+    <tr><td>Estimation Method</td><td class="muted small">${lo.estimationMethod || '—'}</td></tr>`;
+
+  /* Forecast */
+  const f = d.forecast || {};
+  el('forecast-wrap').innerHTML = `
+    <div class="kpi-card kpi-blue">
+      <div class="kpi-label">Predicted Tomorrow</div>
+      <div class="kpi-value">${fN(f.predictedTomorrowLitres)}</div>
+      <div class="kpi-unit">Litres</div>
+    </div>
+    <div class="kpi-card kpi-red">
+      <div class="kpi-label">Expected Loss</div>
+      <div class="kpi-value">${fN(f.expectedLossLitres)}</div>
+      <div class="kpi-unit">Litres</div>
+    </div>
+    <div class="kpi-card kpi-teal">
+      <div class="kpi-label">History Used</div>
+      <div class="kpi-value">${fN(f.daysOfHistoryUsed)}</div>
+      <div class="kpi-unit">Days of data</div>
+    </div>`;
+
+  /* System status */
+  const ss = d.systemStatus || {};
+  el('sysstat-wrap').innerHTML = `
+    <div class="kpi-card ${ss.mlModelActive ? 'kpi-green' : 'kpi-red'}">
+      <div class="kpi-label">ML Model Active</div>
+      <div class="kpi-value">${ss.mlModelActive ? 'Active' : 'Inactive'}</div>
+    </div>
+    <div class="kpi-card kpi-blue">
+      <div class="kpi-label">Total Records Today</div>
+      <div class="kpi-value">${fN(ss.totalRecordsToday)}</div>
+      <div class="kpi-unit">predictions</div>
+    </div>
+    <div class="kpi-card kpi-red">
+      <div class="kpi-label">Leak Records Today</div>
+      <div class="kpi-value">${fN(ss.leakRecordsToday)}</div>
+      <div class="kpi-unit">leak events</div>
+    </div>`;
+}
+
+function buildCharts(history) {
+  const data   = [...history].reverse();
+  const labels = data.map(r => r.date || '—');
+  const TICK   = '#6b7280', GRID = '#e5e7eb';
+  const TT     = { backgroundColor:'#1f2937', titleColor:'#f9fafb', bodyColor:'#d1d5db', borderColor:'#374151', borderWidth:1, padding:10, cornerRadius:4 };
+  const AXES   = {
+    x: { ticks:{ color:TICK, maxTicksLimit:14, font:{size:10} }, grid:{ color:GRID } },
+    y: { ticks:{ color:TICK, font:{size:10} }, grid:{ color:GRID } },
+  };
+
+  if (chartC) chartC.destroy();
+  chartC = new Chart(el('chart-consumption'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label:'Total Consumption (L)', data:data.map(r=>r.consumptionToday?.totalLitres), backgroundColor:'#0f62fe', borderRadius:2 }] },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{labels:{color:TICK,font:{size:11},boxWidth:10}}, tooltip:TT }, scales:AXES }
+  });
+
+  if (chartL) chartL.destroy();
+  chartL = new Chart(el('chart-loss-hist'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label:'Estimated Loss (L)', data:data.map(r=>r.consumptionToday?.estimatedLossL), backgroundColor:'#b91c1c', borderRadius:2 }] },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{labels:{color:TICK,font:{size:11},boxWidth:10}}, tooltip:TT }, scales:AXES }
+  });
+}
+
+function renderHistRows(history) {
+  const tb = el('hist-body');
+  if (!history || history.length === 0) {
+    tb.innerHTML = '<tr><td colspan="12" class="empty-state">No records found.</td></tr>';
+    return;
+  }
+  tb.innerHTML = history.map(r => {
+    const c  = r.consumptionToday || {};
+    const s  = r.liveSensor       || {};
+    const la = r.leakAnalysis     || {};
+    const lo = r.lossAnalysis     || {};
+    const f  = r.forecast         || {};
+    const ss = r.systemStatus     || {};
+    return `<tr>
+      <td class="mono small">${r.date || '—'}</td>
+      <td>${fN(s.flowRate)}</td>
+      <td>${fN(s.pressure)}</td>
+      <td>${fN(s.waterLevel)}</td>
+      <td>${fN(s.turbidity)}</td>
+      <td>${la.leakDetected
+        ? '<span class="badge b-red">Leak</span>'
+        : '<span class="badge b-green">Normal</span>'}</td>
+      <td>${fN(lo.estimatedLossLPH)}</td>
+      <td>${fN(c.totalLitres)}</td>
+      <td>${fN(c.estimatedLossL)}</td>
+      <td>${fN(c.lossPercentage)}${c.lossPercentage != null ? '%' : ''}</td>
+      <td>${fN(f.predictedTomorrowLitres)}</td>
+      <td>${ss.mlModelActive
+        ? '<span class="badge b-green">Yes</span>'
+        : '<span class="badge b-red">No</span>'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function fN(v)    { return v == null ? '—' : String(v); }
+async function api(path) { const r = await fetch(API + path); if (!r.ok) throw new Error(r.status); return r.json(); }
+function el(id)   { return document.getElementById(id); }
+function setConn(ok) {
+  el('conn-dot').className    = ok ? 'dot dot-ok' : 'dot dot-err';
+  el('conn-label').textContent = ok ? 'Connected' : 'Offline';
+}
+</script>
+</body>
+</html>

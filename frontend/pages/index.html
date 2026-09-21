@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — Smart Water Monitor</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+
+<!-- ═══ SIDEBAR ═══════════════════════════════════════ -->
+<aside class="sidebar">
+  <div class="sb-brand">
+    <div class="sb-logo">
+      <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/></svg>
+    </div>
+    <div>
+      <div class="sb-name">Smart Water</div>
+      <div class="sb-sub">AI Monitor v1.0</div>
+    </div>
+  </div>
+
+  <div class="sb-section-label">Navigation</div>
+
+  <nav>
+    <a href="index.html" class="active">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+      <span>Dashboard</span>
+    </a>
+    <a href="sensors.html">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+      <span>Sensors</span>
+    </a>
+    <a href="predictions.html">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 21H5c-1.1 0-2-.9-2-2V5c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2v14c0 1.1-.9 2-2 2zm10-9h-4c-1.1 0-2 .9-2 2v5c0 1.1.9 2 2 2h4c1.1 0 2-.9 2-2v-5c0-1.1-.9-2-2-2zm0-8h-4c-1.1 0-2 .9-2 2v3c0 1.1.9 2 2 2h4c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2z"/></svg>
+      <span>Predictions</span>
+    </a>
+    <a href="analytics.html">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>
+      <span>Analytics</span>
+    </a>
+    <a href="alerts.html">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+      <span>Alerts</span>
+    </a>
+  </nav>
+
+  <div class="sb-footer">
+    <div class="sb-conn">
+      <span id="conn-dot" class="dot dot-wait"></span>
+      <span id="conn-label">Connecting</span>
+    </div>
+  </div>
+</aside>
+
+<!-- ═══ MAIN ═══════════════════════════════════════════ -->
+<div class="main">
+
+  <header class="topbar">
+    <div class="topbar-left">
+      <h1>Dashboard</h1>
+      <p>Real-time water monitoring &amp; AI leak detection</p>
+    </div>
+    <div class="topbar-right">
+      <span id="updated" class="muted-2 small">—</span>
+      <div id="live-pill" class="live-pill" onclick="togglePause()" title="Click to pause / resume auto-refresh">
+        <div class="lp-spin"></div>
+        <div class="lp-dot"></div>
+        <span class="lp-label">Live</span>
+        <span id="lp-cd" class="lp-countdown">15s</span>
+      </div>
+      <button class="btn" onclick="manualRefresh()">Refresh now</button>
+    </div>
+    <div id="live-bar" class="live-bar"></div>
+  </header>
+
+  <div class="content">
+
+    <!-- System Status Banner -->
+    <div id="banner" class="status-banner banner-unknown">
+      <div id="banner-dot" class="sb-indicator"></div>
+      <div class="sb-text-wrap">
+        <div id="banner-title" class="sb-status-label">Initializing</div>
+        <div id="banner-detail" class="sb-detail">Connecting to server...</div>
+      </div>
+    </div>
+
+    <!-- Live Sensors -->
+    <section>
+      <div class="sec-header"><span class="sec-title">Live Sensor Readings</span></div>
+      <div class="g4">
+        <div class="kpi-card kpi-blue">
+          <div class="kpi-label">Flow Rate</div>
+          <div id="s-flow" class="kpi-value">—</div>
+          <div class="kpi-unit">Litres per Minute</div>
+          <div id="s-flow-hint" class="kpi-sub"></div>
+        </div>
+        <div class="kpi-card kpi-violet">
+          <div class="kpi-label">Pressure</div>
+          <div id="s-pressure" class="kpi-value">—</div>
+          <div class="kpi-unit">PSI</div>
+          <div id="s-pressure-hint" class="kpi-sub"></div>
+        </div>
+        <div class="kpi-card kpi-teal">
+          <div class="kpi-label">Tank Level</div>
+          <div id="s-tank" class="kpi-value">—</div>
+          <div class="kpi-unit">Percent Full</div>
+          <div id="s-tank-hint" class="kpi-sub"></div>
+        </div>
+        <div class="kpi-card kpi-amber">
+          <div class="kpi-label">Turbidity</div>
+          <div id="s-turbid" class="kpi-value">—</div>
+          <div class="kpi-unit">NTU</div>
+          <div id="s-turbid-hint" class="kpi-sub"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Detection & Analysis -->
+    <section>
+      <div class="sec-header"><span class="sec-title">Detection &amp; Analysis</span></div>
+      <div class="g3">
+
+        <div class="card">
+          <div class="card-title">Leak Detection</div>
+          <div id="leak-status" class="status-pill sp-ok">
+            <span class="pill-dot"></span>
+            <span id="leak-status-text">NORMAL</span>
+          </div>
+          <table class="mini-table">
+            <tr><td>Severity</td><td id="leak-sev">—</td></tr>
+            <tr><td>Probability</td><td id="leak-prob">—</td></tr>
+          </table>
+          <div class="progress-track"><div id="prob-bar" class="progress-fill pf-green" style="width:0%"></div></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Sensor Anomalies</div>
+          <table class="mini-table">
+            <tr><td>Flow Sensor</td><td id="anom-flow">—</td></tr>
+            <tr><td>Pressure Sensor</td><td id="anom-pressure">—</td></tr>
+            <tr><td>Tank Level</td><td id="anom-tank">—</td></tr>
+          </table>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Water Quality</div>
+          <div id="wq-status" class="status-pill sp-ok">
+            <span class="pill-dot"></span>
+            <span id="wq-status-text">—</span>
+          </div>
+          <table class="mini-table">
+            <tr><td>Turbidity</td><td id="wq-turbid">—</td></tr>
+            <tr><td>System Status</td><td id="wq-ml">—</td></tr>
+          </table>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Water Loss -->
+    <section>
+      <div class="sec-header"><span class="sec-title">Water Loss Analysis</span></div>
+      <div class="g3">
+        <div class="kpi-card kpi-red">
+          <div class="kpi-label">Loss Rate — ML Predicted</div>
+          <div id="wl-rate" class="kpi-value">—</div>
+          <div class="kpi-unit">Litres per Hour</div>
+        </div>
+        <div class="kpi-card kpi-amber">
+          <div class="kpi-label">Flow Loss — Formula</div>
+          <div id="wl-flow" class="kpi-value">—</div>
+          <div class="kpi-unit">L/hr from flow drop</div>
+        </div>
+        <div class="kpi-card kpi-teal">
+          <div class="kpi-label">Volume This Interval</div>
+          <div id="wl-vol" class="kpi-value">—</div>
+          <div class="kpi-unit">Litres lost</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Statistics -->
+    <section>
+      <div class="sec-header"><span class="sec-title">Statistics</span></div>
+      <div class="g4">
+        <div class="kpi-card kpi-blue">
+          <div class="kpi-label">Total Predictions</div>
+          <div id="st-total" class="kpi-value">—</div>
+          <div class="kpi-unit">records processed</div>
+        </div>
+        <div class="kpi-card kpi-red">
+          <div class="kpi-label">Leak Events</div>
+          <div id="st-leaks" class="kpi-value">—</div>
+          <div class="kpi-unit" id="st-leak-pct">— % of total</div>
+        </div>
+        <div class="kpi-card kpi-red">
+          <div class="kpi-label">Critical Alerts</div>
+          <div id="st-critical" class="kpi-value">—</div>
+          <div class="kpi-unit">status = CRITICAL</div>
+        </div>
+        <div class="kpi-card kpi-amber">
+          <div class="kpi-label">Avg Water Loss</div>
+          <div id="st-avgloss" class="kpi-value">—</div>
+          <div class="kpi-unit">L/hr average</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Charts -->
+    <section>
+      <div class="sec-header"><span class="sec-title">Trends — Last 30 Records</span></div>
+      <div class="g2">
+        <div class="card">
+          <div class="card-title">Sensor Readings Over Time</div>
+          <div class="chart-wrap"><canvas id="chart-sensors"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Leak Probability &amp; Water Loss Rate</div>
+          <div class="chart-wrap"><canvas id="chart-leak"></canvas></div>
+        </div>
+      </div>
+      <div class="g2" style="margin-top:14px">
+        <div class="card">
+          <div class="card-title">System Status Distribution</div>
+          <div class="chart-wrap-sm"><canvas id="chart-pie"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Sensor Anomaly Count per Record</div>
+          <div class="chart-wrap"><canvas id="chart-anom"></canvas></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Recent Alerts -->
+    <section>
+      <div class="sec-header"><span class="sec-title">Recent Alerts</span></div>
+      <div id="alerts-wrap" class="card">
+        <div class="loading">Loading alerts...</div>
+      </div>
+    </section>
+
+    <!-- History Table -->
+    <section>
+      <div class="sec-header">
+        <span class="sec-title">Prediction History</span>
+        <button class="btn-ghost" id="more-btn" onclick="loadMore()">Load More</button>
+      </div>
+      <div class="card table-card">
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Timestamp</th><th>Flow</th><th>Pressure</th><th>Tank %</th>
+                <th>Turbidity</th><th>Prediction</th><th>Probability</th>
+                <th>Severity</th><th>Flow Anom.</th><th>Press. Anom.</th>
+                <th>Tank Anom.</th><th>Water Quality</th><th>Loss L/hr</th><th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="hist-body">
+              <tr><td colspan="14" class="loading">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<script>
+'use strict';
+const API = 'http://localhost:5000/api';
+let chartS, chartL, chartP, chartA;
+let histPage = 1, histDone = false;
+
+/* ══════════════════════════════════════════════
+   LIVE REFRESH ENGINE  (interval = 15 s)
+══════════════════════════════════════════════ */
+const INTERVAL = 15;          // seconds between auto-refreshes
+let   remaining  = INTERVAL;
+let   paused     = false;
+let   fetchingNow = false;
+let   tickTimer  = null;
+
+function startLive() {
+  remaining = INTERVAL;
+  clearInterval(tickTimer);
+  tickTimer = setInterval(tick, 1000);
+  updatePill();
+  updateBar();
+}
+
+function tick() {
+  if (paused || fetchingNow) return;
+  remaining--;
+  updateBar();
+  updateCountdown();
+  if (remaining <= 0) {
+    remaining = INTERVAL;
+    doFetch();
+  }
+}
+
+function togglePause() {
+  paused = !paused;
+  const pill = document.getElementById('live-pill');
+  pill.classList.toggle('paused', paused);
+  document.getElementById('lp-cd').textContent  = paused ? 'Paused' : remaining + 's';
+  document.getElementById('live-bar').classList.toggle('paused', paused);
+}
+
+function manualRefresh() {
+  remaining = INTERVAL;
+  doFetch();
+}
+
+async function doFetch() {
+  if (fetchingNow) return;
+  fetchingNow = true;
+  const pill = document.getElementById('live-pill');
+  pill.classList.add('fetching');
+  await load();
+  fetchingNow = false;
+  pill.classList.remove('fetching');
+  updatePill();
+}
+
+function updatePill() {
+  if (!paused) document.getElementById('lp-cd').textContent = remaining + 's';
+}
+
+function updateCountdown() {
+  if (!paused) document.getElementById('lp-cd').textContent = remaining + 's';
+}
+
+function updateBar() {
+  const pct = ((INTERVAL - remaining) / INTERVAL) * 100;
+  document.getElementById('live-bar').style.transform = `scaleX(${(100 - pct) / 100})`;
+}
+
+/* ── Boot ─────────────────────────────────────── */
+doFetch();
+startLive();
+
+async function load() {
+  try {
+    const [latest, stats, alerts, history] = await Promise.all([
+      api('/ml-predictions/latest').catch(() => null),
+      api('/ml-predictions/stats').catch(() => null),
+      api('/ml-predictions/alerts?limit=10').catch(() => null),
+      api('/ml-predictions/history?limit=30&page=1').catch(() => null),
+    ]);
+    setConn(true);
+    renderBanner(latest);
+    renderSensors(latest);
+    renderLeak(latest);
+    renderAnomalies(latest);
+    renderWQ(latest);
+    renderLoss(latest);
+    renderStats(stats);
+    renderAlerts(alerts);
+    if (history && history.data) {
+      buildCharts(history.data);
+      renderRows(history.data, false);
+      histPage = 2;
+      histDone = history.pages <= 1;
+    }
+    el('more-btn').textContent = histDone ? 'No More Records' : 'Load More';
+    el('more-btn').disabled = histDone;
+    el('updated').textContent = 'Last updated ' + new Date().toLocaleTimeString();
+  } catch (e) {
+    setConn(false);
+    el('updated').textContent = 'Update failed';
+  }
+}
+
+async function loadMore() {
+  if (histDone) return;
+  el('more-btn').textContent = 'Loading...';
+  el('more-btn').disabled = true;
+  try {
+    const res = await api(`/ml-predictions/history?limit=30&page=${histPage}`);
+    renderRows(res.data, true);
+    histDone = histPage >= res.pages;
+    histPage++;
+  } catch (e) {}
+  el('more-btn').textContent = histDone ? 'No More Records' : 'Load More';
+  el('more-btn').disabled = histDone;
+}
+
+/* ── Helpers ──────────────────────────────────── */
+async function api(path) {
+  const r = await fetch(API + path);
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+function el(id) { return document.getElementById(id); }
+function f1(v)  { return (v == null || isNaN(+v)) ? '—' : (+v).toFixed(1); }
+function f2(v)  { return (v == null || isNaN(+v)) ? '—' : (+v).toFixed(2); }
+function f3(v)  { return (v == null || isNaN(+v)) ? '—' : (+v).toFixed(3); }
+function fmtTime(raw) {
+  if (!raw) return '—';
+  try { const d = new Date(raw); return isNaN(d) ? String(raw) : d.toLocaleString(); } catch { return String(raw); }
+}
+
+function setConn(ok) {
+  el('conn-dot').className = ok ? 'dot dot-ok' : 'dot dot-err';
+  el('conn-label').textContent = ok ? 'Connected' : 'Offline';
+}
+
+/* ── Render: Banner ───────────────────────────── */
+function renderBanner(d) {
+  const wrap = el('banner');
+  if (!d) {
+    wrap.className = 'status-banner banner-unknown';
+    el('banner-title').textContent = 'No Data';
+    el('banner-detail').textContent = 'Verify the Python ML pipeline is running.';
+    return;
+  }
+  const s = (d.overallSystemStatus || 'unknown').toLowerCase();
+  wrap.className = `status-banner banner-${s}`;
+  el('banner-title').textContent = { normal:'System Normal', warning:'System Warning', critical:'Critical Alert' }[s] || s.toUpperCase();
+  el('banner-detail').textContent =
+    `Leak: ${d.mlPredictionData === 1 ? 'Detected' : 'None detected'}` +
+    `  ·  Probability: ${f1(d.mlProbability)}%` +
+    `  ·  Loss rate: ${f2(d.waterLossRate)} L/hr` +
+    `  ·  Updated: ${fmtTime(d.mlProcessedAt)}`;
+}
+
+/* ── Render: Sensors ──────────────────────────── */
+function renderSensors(d) {
+  if (!d) return;
+  el('s-flow').textContent     = f1(d.flowSensorData);
+  el('s-pressure').textContent = f1(d.pressureSensorData);
+  el('s-tank').textContent     = f1(d.tankLevelSensorData);
+  el('s-turbid').textContent   = f1(d.turbiditySensorData);
+  setHint('s-flow-hint',     d.flowAnomaly);
+  setHint('s-pressure-hint', d.pressureAnomaly);
+  setHint('s-tank-hint',     d.tankLevelAnomaly);
+  const wq = (d.waterQualityStatus || '').toUpperCase();
+  const h = el('s-turbid-hint');
+  const map = { GOOD:['ok','Good quality'], MODERATE:['warn','Moderate quality'], POOR:['bad','Poor quality'] };
+  const m = map[wq];
+  if (m) { h.textContent = m[1]; h.className = `kpi-sub ${m[0]}`; } else { h.textContent = ''; }
+}
+
+function setHint(id, val) {
+  const e = el(id);
+  if (!val) { e.textContent = ''; return; }
+  const bad = val.toUpperCase() === 'ABNORMAL';
+  e.textContent = bad ? 'Anomaly detected' : 'Normal reading';
+  e.className   = bad ? 'kpi-sub bad' : 'kpi-sub ok';
+}
+
+/* ── Render: Leak ─────────────────────────────── */
+function renderLeak(d) {
+  if (!d) return;
+  const isLeak = d.mlPredictionData === 1;
+  const sp = el('leak-status');
+  el('leak-status-text').textContent = isLeak ? 'LEAK DETECTED' : 'NORMAL';
+  sp.className = isLeak ? 'status-pill sp-bad' : 'status-pill sp-ok';
+
+  el('leak-sev').innerHTML  = sevBadge((d.mlSeverity || '').toLowerCase());
+  const prob = Math.min(100, Math.max(0, d.mlProbability || 0));
+  el('leak-prob').textContent = f1(prob) + '%';
+  const bar = el('prob-bar');
+  bar.style.width = prob + '%';
+  bar.className   = 'progress-fill' + (prob >= 80 ? ' pf-red' : prob >= 50 ? ' pf-amber' : ' pf-green');
+}
+
+/* ── Render: Anomalies ────────────────────────── */
+function renderAnomalies(d) {
+  if (!d) return;
+  el('anom-flow').innerHTML     = anomBadge(d.flowAnomaly);
+  el('anom-pressure').innerHTML = anomBadge(d.pressureAnomaly);
+  el('anom-tank').innerHTML     = anomBadge(d.tankLevelAnomaly);
+}
+
+/* ── Render: Water Quality ────────────────────── */
+function renderWQ(d) {
+  if (!d) return;
+  const wq = (d.waterQualityStatus || 'unknown').toLowerCase();
+  const sp = el('wq-status');
+  el('wq-status-text').textContent = wq.toUpperCase();
+  sp.className = wq === 'good' ? 'status-pill sp-ok' : wq === 'moderate' ? 'status-pill sp-warn' : 'status-pill sp-bad';
+  el('wq-turbid').textContent = f1(d.turbiditySensorData) + ' NTU';
+  el('wq-ml').innerHTML = statusBadge((d.overallSystemStatus || '').toLowerCase());
+}
+
+/* ── Render: Water Loss ───────────────────────── */
+function renderLoss(d) {
+  if (!d) return;
+  el('wl-rate').textContent = f2(d.waterLossRate);
+  el('wl-flow').textContent = f2(d.waterLossFlowLoss);
+  el('wl-vol').textContent  = f3(d.waterLossVolume);
+}
+
+/* ── Render: Stats ────────────────────────────── */
+function renderStats(s) {
+  if (!s) return;
+  el('st-total').textContent    = s.total ?? '—';
+  el('st-leaks').textContent    = s.leakCount ?? '—';
+  el('st-leak-pct').textContent = (s.leakRate ?? '—') + '% of total';
+  el('st-critical').textContent = s.criticalCount ?? '—';
+  el('st-avgloss').textContent  = f2(s.avgWaterLossRate);
+}
+
+/* ── Render: Alerts ───────────────────────────── */
+function renderAlerts(list) {
+  const w = el('alerts-wrap');
+  if (!list || list.length === 0) {
+    w.innerHTML = '<div class="empty-state">No recent alerts — system is operating normally.</div>';
+    return;
+  }
+  w.innerHTML = '<div class="alert-feed">' + list.map(a => {
+    const s = (a.overallSystemStatus || '').toLowerCase();
+    return `<div class="alert-row al-${s}">
+      <div class="al-accent"></div>
+      <div class="al-body">
+        <div class="al-header">
+          <span class="al-title">${s.toUpperCase()}</span>
+          <span class="al-time">${fmtTime(a.mlProcessedAt)}</span>
+        </div>
+        <div class="al-meta">
+          Leak: ${a.mlPredictionData === 1 ? 'Detected' : 'None'} &nbsp;·&nbsp;
+          Probability: ${f1(a.mlProbability)}% &nbsp;·&nbsp;
+          Severity: ${a.mlSeverity || '—'} &nbsp;·&nbsp;
+          Loss: ${f2(a.waterLossRate)} L/hr &nbsp;·&nbsp;
+          Flow: ${f1(a.flowSensorData)} L/min &nbsp;·&nbsp;
+          Pressure: ${f1(a.pressureSensorData)} PSI &nbsp;·&nbsp;
+          Tank: ${f1(a.tankLevelSensorData)}%
+        </div>
+      </div>
+    </div>`;
+  }).join('') + '</div>';
+}
+
+/* ── Render: History table ────────────────────── */
+function renderRows(rows, append) {
+  const tb = el('hist-body');
+  if (!append) tb.innerHTML = '';
+  if (!rows || rows.length === 0) {
+    if (!append) tb.innerHTML = '<tr><td colspan="14" class="empty-state">No records found.</td></tr>';
+    return;
+  }
+  tb.insertAdjacentHTML('beforeend', rows.map(r => {
+    const isLeak = r.mlPredictionData === 1;
+    const sev = (r.mlSeverity || '').toLowerCase();
+    const st  = (r.overallSystemStatus || '').toLowerCase();
+    return `<tr>
+      <td class="mono">${fmtTime(r.mlProcessedAt)}</td>
+      <td>${f1(r.flowSensorData)}</td>
+      <td>${f1(r.pressureSensorData)}</td>
+      <td>${f1(r.tankLevelSensorData)}</td>
+      <td>${f1(r.turbiditySensorData)}</td>
+      <td>${isLeak ? '<span class="badge b-red">LEAK</span>' : '<span class="badge b-green">NORMAL</span>'}</td>
+      <td>${f1(r.mlProbability)}%</td>
+      <td>${sevBadge(sev)}</td>
+      <td>${anomBadge(r.flowAnomaly)}</td>
+      <td>${anomBadge(r.pressureAnomaly)}</td>
+      <td>${anomBadge(r.tankLevelAnomaly)}</td>
+      <td>${wqBadge(r.waterQualityStatus)}</td>
+      <td>${f2(r.waterLossRate)}</td>
+      <td>${statusBadge(st)}</td>
+    </tr>`;
+  }).join(''));
+}
+
+/* ── Badge helpers ────────────────────────────── */
+function anomBadge(v)   { return v === 'ABNORMAL' ? '<span class="badge b-red">Abnormal</span>' : '<span class="badge b-green">Normal</span>'; }
+function sevBadge(s)    { return s === 'high' ? '<span class="badge b-red">High</span>' : s === 'medium' ? '<span class="badge b-amber">Medium</span>' : s ? `<span class="badge b-green">${cap(s)}</span>` : '—'; }
+function statusBadge(s) { return s === 'critical' ? '<span class="badge b-red">Critical</span>' : s === 'warning' ? '<span class="badge b-amber">Warning</span>' : s === 'normal' ? '<span class="badge b-green">Normal</span>' : '<span class="badge b-grey">—</span>'; }
+function wqBadge(v)     { if (!v) return '—'; return `<span class="badge ${v==='GOOD'?'b-green':v==='MODERATE'?'b-amber':'b-red'}">${cap(v.toLowerCase())}</span>`; }
+function cap(s)         { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
+
+/* ── Charts ───────────────────────────────────── */
+const TICK  = '#6b7280';
+const GRID  = '#e5e7eb';
+const TT    = { backgroundColor:'#1f2937', titleColor:'#f9fafb', bodyColor:'#d1d5db', borderColor:'#374151', borderWidth:1, padding:10, cornerRadius:4 };
+const XAXIS = { ticks:{ color:TICK, maxTicksLimit:8, font:{size:10} }, grid:{ color:GRID } };
+const YAXIS = { ticks:{ color:TICK, font:{size:10} }, grid:{ color:GRID } };
+
+function buildCharts(rows) {
+  const data   = [...rows].reverse();
+  const labels = data.map(r => { try { return new Date(r.mlProcessedAt || r.createdAt).toLocaleTimeString(); } catch { return ''; } });
+
+  if (chartS) chartS.destroy();
+  chartS = new Chart(el('chart-sensors'), {
+    type: 'line',
+    data: { labels, datasets: [
+      { label:'Flow',       data:data.map(r=>r.flowSensorData),      borderColor:'#0f62fe', borderWidth:1.5, tension:.3, pointRadius:0, fill:false },
+      { label:'Pressure',   data:data.map(r=>r.pressureSensorData),  borderColor:'#6d28d9', borderWidth:1.5, tension:.3, pointRadius:0, fill:false },
+      { label:'Tank Level', data:data.map(r=>r.tankLevelSensorData), borderColor:'#0f766e', borderWidth:1.5, tension:.3, pointRadius:0, fill:false },
+      { label:'Turbidity',  data:data.map(r=>r.turbiditySensorData), borderColor:'#b45309', borderWidth:1.5, tension:.3, pointRadius:0, fill:false },
+    ]},
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ labels:{ color:TICK, font:{size:11}, boxWidth:10, padding:14 } }, tooltip:TT },
+      scales:{ x:XAXIS, y:YAXIS }
+    }
+  });
+
+  if (chartL) chartL.destroy();
+  chartL = new Chart(el('chart-leak'), {
+    type: 'line',
+    data: { labels, datasets: [
+      { label:'Leak Probability (%)', data:data.map(r=>r.mlProbability),  borderColor:'#b91c1c', borderWidth:1.5, tension:.3, pointRadius:0, fill:false, yAxisID:'y' },
+      { label:'Water Loss (L/hr)',    data:data.map(r=>r.waterLossRate),   borderColor:'#198038', borderWidth:1.5, tension:.3, pointRadius:0, fill:false, yAxisID:'y1' },
+    ]},
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ labels:{ color:TICK, font:{size:11}, boxWidth:10, padding:14 } }, tooltip:TT },
+      scales:{
+        x:  XAXIS,
+        y:  { ...YAXIS, position:'left',  title:{ display:true, text:'Probability %', color:TICK, font:{size:10} } },
+        y1: { ...YAXIS, position:'right', title:{ display:true, text:'L/hr',          color:TICK, font:{size:10} }, grid:{ drawOnChartArea:false } },
+      }
+    }
+  });
+
+  if (chartP) chartP.destroy();
+  chartP = new Chart(el('chart-pie'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Normal','Warning','Critical'],
+      datasets: [{ data:[
+        data.filter(r=>r.overallSystemStatus==='NORMAL').length,
+        data.filter(r=>r.overallSystemStatus==='WARNING').length,
+        data.filter(r=>r.overallSystemStatus==='CRITICAL').length,
+      ], backgroundColor:['#198038','#b45309','#b91c1c'], borderColor:'#ffffff', borderWidth:3 }]
+    },
+    options: { responsive:true, maintainAspectRatio:false, cutout:'65%',
+      plugins:{ legend:{ position:'right', labels:{ color:TICK, font:{size:12}, boxWidth:12, padding:14 } }, tooltip:TT }
+    }
+  });
+
+  if (chartA) chartA.destroy();
+  chartA = new Chart(el('chart-anom'), {
+    type: 'bar',
+    data: { labels, datasets: [{
+      label: 'Anomaly Count',
+      data: data.map(r=>[r.flowAnomaly,r.pressureAnomaly,r.tankLevelAnomaly].filter(v=>v==='ABNORMAL').length),
+      backgroundColor: data.map(r=>{
+        const n=[r.flowAnomaly,r.pressureAnomaly,r.tankLevelAnomaly].filter(v=>v==='ABNORMAL').length;
+        return n>=2?'#b91c1c':n===1?'#b45309':'#198038';
+      }),
+      borderRadius: 2,
+    }]},
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ labels:{ color:TICK, font:{size:11} } }, tooltip:TT },
+      scales:{ x:XAXIS, y:{ ...YAXIS, max:3, ticks:{ stepSize:1, color:TICK, font:{size:10} } } }
+    }
+  });
+}
+</script>
+</body>
+</html>
