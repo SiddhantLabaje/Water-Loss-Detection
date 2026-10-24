@@ -29,14 +29,26 @@ app.get("/api/health", (_req, res) => {
 });
 
 // ── Serve frontend static files ───────────────────────────────────────────
-// The frontend folder sits one level above the backend folder.
-const frontendPath = path.join(__dirname, "..", "frontend");
-app.use(express.static(frontendPath));
+const frontendRoot  = path.join(__dirname, "..", "frontend");
+const frontendPages = path.join(frontendRoot, "pages");
 
-// Serve index.html for the root and any unmatched non-API routes (SPA fallback)
+// Serve shared assets (shared.css, live.js, stream.js) from frontend/
+app.use(express.static(frontendRoot));
+
+// Serve HTML pages directly from frontend/pages/
+// e.g. /sensors.html  → frontend/pages/sensors.html
+//      /index.html    → frontend/pages/index.html
+app.use(express.static(frontendPages));
+
+// Root "/" → dashboard
+app.get("/", (_req, res) => {
+  res.sendFile(path.join(frontendPages, "index.html"));
+});
+
+// Any other non-API, non-file route → 404 (don't silently redirect to dashboard)
 app.use((req, res, next) => {
   if (req.path.startsWith("/api")) return next();
-  res.sendFile(path.join(frontendPath, "pages", "index.html"));
+  res.status(404).sendFile(path.join(frontendPages, "index.html"));
 });
 
 export default app;
