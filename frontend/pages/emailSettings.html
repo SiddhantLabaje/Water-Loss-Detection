@@ -181,31 +181,10 @@
   }
   .setup-steps li:last-child { border-bottom: none; }
 
-  .loading-overlay {
-    display: none;
-    position: fixed; inset: 0;
-    background: rgba(255,255,255,.6);
-    z-index: 9999;
-    align-items: center;
-    justify-content: center;
-  }
-  .loading-overlay.show { display: flex; }
-  .spinner {
-    width: 36px; height: 36px;
-    border: 3px solid var(--border-2);
-    border-top-color: var(--primary);
-    border-radius: 50%;
-    animation: spin .7s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-overlay { display: none; /* removed — buttons handle their own loading state */ }
 </style>
 </head>
 <body>
-
-<!-- ═══ LOADING OVERLAY ═══════════════════════════════ -->
-<div class="loading-overlay" id="loading-overlay">
-  <div class="spinner"></div>
-</div>
 
 <!-- ═══ SIDEBAR ═══════════════════════════════════════ -->
 <aside class="sidebar">
@@ -606,27 +585,39 @@ function showResult(id, type, html) {
   if (type === 'success') setTimeout(() => { box.classList.remove('show'); }, 6000);
 }
 
-function setLoading(on) {
-  el('loading-overlay').classList.toggle('show', on);
-}
+// setLoading is a no-op — buttons handle their own state
+function setLoading(_on) {}
 
 async function apiGet(path) {
-  const r = await fetch(API + path);
-  const data = await r.json();
-  if (!r.ok) { const err = new Error(data.message || r.status); err.status = r.status; throw err; }
-  return data;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 15000); // 15s timeout
+  try {
+    const r = await fetch(API + path, { signal: ctrl.signal });
+    const data = await r.json();
+    if (!r.ok) { const err = new Error(data.message || r.status); err.status = r.status; throw err; }
+    return data;
+  } finally { clearTimeout(t); }
 }
 
 async function apiPost(path, body) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 20000); // 20s timeout for email sends
+  try {
+    const r = await fetch(API + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.message || r.status);
+    return data;
+  } finally { clearTimeout(t); }
+}
   const r = await fetch(API + path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const data = await r.json();
-  if (!r.ok) throw new Error(data.message || r.status);
-  return data;
-}
+
 </script>
 </body>
 </html>
