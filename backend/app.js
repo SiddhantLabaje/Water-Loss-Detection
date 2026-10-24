@@ -33,16 +33,10 @@ app.get("/api/health", (_req, res) => {
 const frontendPath = path.join(__dirname, "..", "frontend");
 app.use(express.static(frontendPath));
 
-// Serve index.html for the root and any unmatched routes (SPA fallback)
-app.get("/", (_req, res) => {
+// Serve index.html for the root and any unmatched non-API routes (SPA fallback)
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api")) return next();
   res.sendFile(path.join(frontendPath, "pages", "index.html"));
-});
-
-app.get("*", (req, res) => {
-  // Only fall back to index for non-API routes
-  if (!req.path.startsWith("/api")) {
-    res.sendFile(path.join(frontendPath, "pages", "index.html"));
-  }
 });
 
 export default app;
