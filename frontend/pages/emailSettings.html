@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Email Reports — Smart Water Monitor</title>
+<link rel="stylesheet" href="../shared.css">
+<style>
+  .form-group { margin-bottom: 18px; }
+  .form-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-2);
+    margin-bottom: 6px;
+  }
+  .form-hint {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .form-input {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid var(--border-2);
+    border-radius: var(--radius);
+    font-size: 14px;
+    font-family: inherit;
+    color: var(--text);
+    background: var(--surface);
+    transition: border-color .15s, box-shadow .15s;
+    outline: none;
+  }
+  .form-input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(15,98,254,.12);
+  }
+  .form-input.input-error { border-color: var(--danger); }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .toggle {
+    position: relative;
+    width: 40px; height: 22px;
+    flex-shrink: 0;
+  }
+  .toggle input { display: none; }
+  .toggle-track {
+    position: absolute; inset: 0;
+    background: var(--border-2);
+    border-radius: 11px;
+    cursor: pointer;
+    transition: background .2s;
+  }
+  .toggle input:checked + .toggle-track { background: var(--primary); }
+  .toggle-thumb {
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    pointer-events: none;
+    transition: transform .2s;
+  }
+  .toggle input:checked ~ .toggle-thumb { transform: translateX(18px); }
+
+  .btn-primary {
+    background: var(--primary);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s, opacity .15s;
+    font-family: inherit;
+  }
+  .btn-primary:hover:not(:disabled) { background: var(--primary-h); }
+  .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+
+  .btn-send {
+    background: var(--success);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s, opacity .15s;
+    font-family: inherit;
+  }
+  .btn-send:hover:not(:disabled) { background: #166534; }
+  .btn-send:disabled { opacity: .5; cursor: not-allowed; }
+
+  .btn-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 24px;
+  }
+
+  .alert-box {
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    font-weight: 500;
+    margin-top: 16px;
+    display: none;
+  }
+  .alert-box.show { display: block; }
+  .alert-success {
+    background: var(--success-bg);
+    border: 1px solid var(--success-bd);
+    color: var(--success);
+  }
+  .alert-error {
+    background: var(--danger-bg);
+    border: 1px solid var(--danger-bd);
+    color: var(--danger);
+  }
+  .alert-info {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    color: #1e40af;
+  }
+
+  .saved-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--success-bg);
+    border: 1px solid var(--success-bd);
+    color: var(--success);
+    padding: 4px 10px;
+    border-radius: 99px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .current-settings-card {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 24px;
+  }
+  .cs-label { font-size: 12px; color: var(--muted); text-transform: uppercase; font-weight: 600; margin-bottom: 8px; }
+  .cs-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .cs-row:last-child { border-bottom: none; }
+  .cs-key { color: var(--muted); }
+  .cs-val { font-weight: 600; color: var(--text); text-align: right; max-width: 60%; word-break: break-all; }
+
+  .step-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .setup-steps { list-style: none; }
+  .setup-steps li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--text-2);
+  }
+  .setup-steps li:last-child { border-bottom: none; }
+
+  .loading-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(255,255,255,.6);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+  }
+  .loading-overlay.show { display: flex; }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 3px solid var(--border-2);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- ═══ LOADING OVERLAY ═══════════════════════════════ -->
+<div class="loading-overlay" id="loading-overlay">
+  <div class="spinner"></div>
+</div>
+
+<!-- ═══ SIDEBAR ═══════════════════════════════════════ -->
+<aside class="sidebar">
+  <div class="sb-brand">
+    <div class="sb-logo">
+      <svg viewBox="0 0 24 24" fill="#fff"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/></svg>
+    </div>
+    <div>
+      <div class="sb-name">Smart Water</div>
+      <div class="sb-sub">AI Monitor v1.0</div>
+    </div>
+  </div>
+  <div class="sb-section-label">Navigation</div>
+  <nav>
+    <a href="index.html">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+      <span>Dashboard</span>
+    </a>
+    <a href="sensors.html">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+      <span>Sensors</span>
+    </a>
+    <a href="predictions.html">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 21H5c-1.1 0-2-.9-2-2V5c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2v14c0 1.1-.9 2-2 2zm10-9h-4c-1.1 0-2 .9-2 2v5c0 1.1.9 2 2 2h4c1.1 0 2-.9 2-2v-5c0-1.1-.9-2-2-2zm0-8h-4c-1.1 0-2 .9-2 2v3c0 1.1.9 2 2 2h4c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2z"/></svg>
+      <span>Predictions</span>
+    </a>
+    <a href="analytics.html">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>
+      <span>Analytics</span>
+    </a>
+    <a href="alerts.html">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+      <span>Alerts</span>
+    </a>
+    <a href="emailSettings.html" class="active">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+      <span>Email Reports</span>
+    </a>
+  </nav>
+  <div class="sb-footer">
+    <div class="sb-conn">
+      <span id="conn-dot" class="dot dot-wait"></span>
+      <span id="conn-label">Connecting</span>
+    </div>
+  </div>
+</aside>
+
+<!-- ═══ MAIN ═══════════════════════════════════════════ -->
+<div class="main">
+  <header class="topbar">
+    <div class="topbar-left">
+      <h1>Email Reports</h1>
+      <p>Configure a recipient email and send dashboard summaries</p>
+    </div>
+    <div class="topbar-right">
+      <span id="updated" class="muted-2 small">—</span>
+    </div>
+  </header>
+
+  <div class="content">
+
+    <!-- Current saved settings (shown when settings exist) -->
+    <section id="current-section" style="display:none;">
+      <div class="sec-header"><span class="sec-title">Saved Settings</span></div>
+      <div class="card">
+        <div class="cs-label">Current Recipient</div>
+        <div class="current-settings-card" id="current-settings-card">
+          <!-- filled dynamically -->
+        </div>
+        <button class="btn-send" id="quick-send-btn" onclick="quickSend()">
+          📧 Send Report Now
+        </button>
+        <div id="quick-send-result" class="alert-box"></div>
+      </div>
+    </section>
+
+    <!-- Setup guide -->
+    <section>
+      <div class="sec-header"><span class="sec-title">Gmail Setup Guide</span></div>
+      <div class="card">
+        <ul class="setup-steps">
+          <li>
+            <span class="step-badge">1</span>
+            <span>Open your <strong>.env</strong> file in <code>backend/</code> and set <code>EMAIL_USER</code> to your Gmail address.</span>
+          </li>
+          <li>
+            <span class="step-badge">2</span>
+            <span>Generate a Gmail <strong>App Password</strong> — go to
+              <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener" style="color:var(--primary);">myaccount.google.com/apppasswords</a>.
+              You need 2-Step Verification enabled.
+            </span>
+          </li>
+          <li>
+            <span class="step-badge">3</span>
+            <span>Set <code>EMAIL_PASS</code> in <code>.env</code> to the 16-character App Password (no spaces).</span>
+          </li>
+          <li>
+            <span class="step-badge">4</span>
+            <span>Restart the backend server so it picks up the new environment variables.</span>
+          </li>
+          <li>
+            <span class="step-badge">5</span>
+            <span>Fill in the form below, click <strong>Save Settings</strong>, then <strong>Send Report Now</strong>.</span>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Email settings form -->
+    <section>
+      <div class="sec-header"><span class="sec-title">Recipient Settings</span></div>
+      <div class="card" style="max-width:600px;">
+
+        <form id="email-form" onsubmit="saveSettings(event)" novalidate>
+
+          <div class="form-group">
+            <label class="form-label" for="recipientEmail">Recipient Email <span style="color:var(--danger)">*</span></label>
+            <input
+              class="form-input"
+              type="email"
+              id="recipientEmail"
+              placeholder="e.g. john@example.com"
+              autocomplete="email"
+              required
+            />
+            <div class="form-hint">Dashboard reports will be sent to this address.</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="recipientName">Recipient Name</label>
+            <input
+              class="form-input"
+              type="text"
+              id="recipientName"
+              placeholder="e.g. John Smith"
+              autocomplete="name"
+            />
+            <div class="form-hint">Used as a greeting in the email body.</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="ccEmails">CC Emails</label>
+            <input
+              class="form-input"
+              type="text"
+              id="ccEmails"
+              placeholder="e.g. manager@example.com, ops@example.com"
+            />
+            <div class="form-hint">Optional. Separate multiple addresses with commas.</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Alert on Critical Status</label>
+            <div class="toggle-row">
+              <label class="toggle" for="alertOnCritical">
+                <input type="checkbox" id="alertOnCritical" />
+                <div class="toggle-track"></div>
+                <div class="toggle-thumb"></div>
+              </label>
+              <span style="font-size:13px;color:var(--text-2);">
+                Automatically send a report email whenever a CRITICAL alert is detected
+              </span>
+            </div>
+          </div>
+
+          <div id="save-result" class="alert-box"></div>
+
+          <div class="btn-row">
+            <button type="submit" class="btn-primary" id="save-btn">
+              💾 Save Settings
+            </button>
+            <button type="button" class="btn-send" id="send-btn" onclick="sendReport()" disabled>
+              📧 Send Report Now
+            </button>
+          </div>
+
+        </form>
+
+        <div id="send-result" class="alert-box" style="margin-top:12px;"></div>
+
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<script>
+'use strict';
+const API = '/api';
+
+// ── On load ────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  loadSettings();
+  // Check connection via health endpoint
+  fetch(API + '/health')
+    .then(r => setConn(r.ok))
+    .catch(() => setConn(false));
+});
+
+function setConn(ok) {
+  el('conn-dot').className     = ok ? 'dot dot-ok'  : 'dot dot-err';
+  el('conn-label').textContent = ok ? 'Connected'   : 'Offline';
+}
+
+// ── Load existing settings ─────────────────────────────
+async function loadSettings() {
+  try {
+    const s = await apiGet('/email/settings');
+    populateForm(s);
+    renderCurrentSettings(s);
+    el('current-section').style.display = '';
+    el('send-btn').disabled = false;
+    el('updated').textContent = 'Settings loaded';
+  } catch (e) {
+    if (e.status === 404) {
+      el('updated').textContent = 'No settings saved yet';
+    } else {
+      el('updated').textContent = 'Failed to load settings';
+    }
+  }
+}
+
+function populateForm(s) {
+  if (!s) return;
+  el('recipientEmail').value  = s.recipientEmail  || '';
+  el('recipientName').value   = s.recipientName   || '';
+  el('ccEmails').value        = (s.ccEmails || []).join(', ');
+  el('alertOnCritical').checked = Boolean(s.alertOnCritical);
+}
+
+function renderCurrentSettings(s) {
+  const card = el('current-settings-card');
+  if (!s) { card.innerHTML = '<p style="color:var(--muted);font-size:13px;">No settings saved yet.</p>'; return; }
+  card.innerHTML = `
+    <div class="cs-row"><span class="cs-key">Email</span><span class="cs-val">${esc(s.recipientEmail)}</span></div>
+    <div class="cs-row"><span class="cs-key">Name</span><span class="cs-val">${esc(s.recipientName || '—')}</span></div>
+    <div class="cs-row"><span class="cs-key">CC</span><span class="cs-val">${esc((s.ccEmails && s.ccEmails.length > 0) ? s.ccEmails.join(', ') : '—')}</span></div>
+    <div class="cs-row"><span class="cs-key">Alert on Critical</span><span class="cs-val">${s.alertOnCritical ? '✅ Yes' : '❌ No'}</span></div>
+  `;
+}
+
+// ── Save settings ──────────────────────────────────────
+async function saveSettings(e) {
+  e.preventDefault();
+
+  const emailVal = el('recipientEmail').value.trim();
+  if (!emailVal) {
+    showResult('save-result', 'error', 'Recipient email is required.');
+    el('recipientEmail').classList.add('input-error');
+    return;
+  }
+  if (!validEmail(emailVal)) {
+    showResult('save-result', 'error', 'Please enter a valid email address.');
+    el('recipientEmail').classList.add('input-error');
+    return;
+  }
+  el('recipientEmail').classList.remove('input-error');
+
+  const ccRaw = el('ccEmails').value.trim();
+  const ccList = ccRaw ? ccRaw.split(',').map(x => x.trim()).filter(Boolean) : [];
+  for (const cc of ccList) {
+    if (!validEmail(cc)) {
+      showResult('save-result', 'error', `Invalid CC email: ${cc}`);
+      return;
+    }
+  }
+
+  const payload = {
+    recipientEmail:  emailVal,
+    recipientName:   el('recipientName').value.trim() || 'Dashboard User',
+    ccEmails:        ccList,
+    alertOnCritical: el('alertOnCritical').checked,
+  };
+
+  setLoading(true);
+  try {
+    const result = await apiPost('/email/settings', payload);
+    showResult('save-result', 'success', '✅ Settings saved successfully!');
+    renderCurrentSettings(result.settings);
+    el('current-section').style.display = '';
+    el('send-btn').disabled = false;
+    el('updated').textContent = 'Saved at ' + new Date().toLocaleTimeString();
+  } catch (err) {
+    showResult('save-result', 'error', '❌ ' + (err.message || 'Failed to save settings.'));
+  } finally {
+    setLoading(false);
+  }
+}
+
+// ── Send report (from form) ────────────────────────────
+async function sendReport() {
+  const emailVal = el('recipientEmail').value.trim();
+  if (!emailVal) {
+    showResult('send-result', 'error', 'Please save a recipient email first.');
+    return;
+  }
+
+  const btn = el('send-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Sending...';
+  setLoading(true);
+
+  try {
+    const result = await apiPost('/email/send-report', {
+      recipientEmail: emailVal,
+      recipientName: el('recipientName').value.trim() || 'Dashboard User',
+      ccEmails: el('ccEmails').value.trim()
+        ? el('ccEmails').value.split(',').map(x => x.trim()).filter(Boolean)
+        : [],
+    });
+    showResult('send-result', 'success',
+      `✅ Report sent to <strong>${esc(result.accepted?.[0] || emailVal)}</strong>. Check your inbox!`
+    );
+  } catch (err) {
+    const isAuth = err.message && err.message.includes('authentication');
+    showResult('send-result', 'error',
+      isAuth
+        ? '❌ SMTP auth failed — double-check EMAIL_USER and EMAIL_PASS in your .env file.'
+        : '❌ ' + (err.message || 'Failed to send report.')
+    );
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📧 Send Report Now';
+    setLoading(false);
+  }
+}
+
+// ── Quick send (from saved-settings card) ─────────────
+async function quickSend() {
+  const btn = el('quick-send-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Sending...';
+  setLoading(true);
+
+  try {
+    const result = await apiPost('/email/send-report', {});
+    showResult('quick-send-result', 'success',
+      `✅ Report sent to <strong>${esc(result.accepted?.[0] || '—')}</strong>. Check your inbox!`
+    );
+  } catch (err) {
+    const isAuth = err.message && err.message.includes('authentication');
+    showResult('quick-send-result', 'error',
+      isAuth
+        ? '❌ SMTP auth failed — check EMAIL_USER and EMAIL_PASS in .env.'
+        : '❌ ' + (err.message || 'Failed to send report.')
+    );
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📧 Send Report Now';
+    setLoading(false);
+  }
+}
+
+// ── Helpers ────────────────────────────────────────────
+function el(id)       { return document.getElementById(id); }
+function validEmail(v){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
+function esc(s)       { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function showResult(id, type, html) {
+  const box = el(id);
+  box.className = `alert-box show alert-${type}`;
+  box.innerHTML = html;
+  // Auto-hide success after 6 s
+  if (type === 'success') setTimeout(() => { box.classList.remove('show'); }, 6000);
+}
+
+function setLoading(on) {
+  el('loading-overlay').classList.toggle('show', on);
+}
+
+async function apiGet(path) {
+  const r = await fetch(API + path);
+  const data = await r.json();
+  if (!r.ok) { const err = new Error(data.message || r.status); err.status = r.status; throw err; }
+  return data;
+}
+
+async function apiPost(path, body) {
+  const r = await fetch(API + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.message || r.status);
+  return data;
+}
+</script>
+</body>
+</html>

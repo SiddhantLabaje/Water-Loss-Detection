@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: smart-water-monitor
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGO_URI
+        sync: false          # you will paste this in Render dashboard
+      - key: CHANNEL_ID
+        sync: false
+      - key: READ_API_KEY
+        sync: false
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASS
+        sync: false

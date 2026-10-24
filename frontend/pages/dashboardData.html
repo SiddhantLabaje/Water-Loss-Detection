@@ -15,7 +15,7 @@
     <script>
         async function getDashboardData() {
             try {
-                const response = await fetch("http://localhost:5000/api/dashboard/cleaned-sensor-data");
+                const response = await fetch("/api/dashboard/cleaned-sensor-data");
                 const d = await response.json();
 
                 const data = document.getElementById("data");

@@ -25,7 +25,7 @@ async function getSensrData() {
     try {
 
         const response = await fetch(
-            'http://localhost:5000/api/sensors/sensor-data'
+            '/api/sensors/sensor-data'
         );
 
         const sensors = await response.json();
