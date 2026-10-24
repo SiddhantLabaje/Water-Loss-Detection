@@ -316,19 +316,25 @@ function wqBadge(v)     { if (!v) return '—'; return `<span class="badge ${v==
 
 /* ── Main load ─────────────────────────────────── */
 async function load() {
-  const [latest, stats, alerts, history] = await Promise.all([
+  const [latest, sensor, stats, alerts, history] = await Promise.all([
     api('/ml-predictions/latest').catch(() => null),
+    api('/sensors/latest').catch(() => null),
     api('/ml-predictions/stats').catch(() => null),
     api('/ml-predictions/alerts?limit=10').catch(() => null),
     api('/ml-predictions/history?limit=30&page=1').catch(() => null),
   ]);
+  const predictionMatchesSensor = Boolean(
+    latest && sensor && String(latest.sensorDocumentId) === String(sensor._id)
+  );
   setConn(true);
-  renderBanner(latest);
-  renderSensors(latest);
-  renderLeak(latest);
-  renderAnomalies(latest);
-  renderWQ(latest);
-  renderLoss(latest);
+  const predictionPending = Boolean(sensor && !predictionMatchesSensor);
+  const predictionCurrent = !sensor || predictionMatchesSensor;
+  renderBanner(latest, predictionPending);
+  renderSensors(sensor, latest, predictionCurrent);
+  renderLeak(latest, predictionPending);
+  renderAnomalies(latest, predictionPending);
+  renderWQ(latest, sensor, predictionCurrent);
+  renderLoss(latest, predictionPending);
   renderStats(stats);
   renderAlerts(alerts);
   if (history && history.data) {
@@ -357,8 +363,14 @@ async function loadMore() {
 }
 
 /* ── Render functions ──────────────────────────── */
-function renderBanner(d) {
+function renderBanner(d, predictionPending = false) {
   const wrap = el('banner');
+  if (predictionPending) {
+    wrap.className = 'status-banner banner-unknown';
+    el('banner-title').textContent = 'Prediction Pending';
+    el('banner-detail').textContent = 'Latest sensor readings are available. Waiting for the ML pipeline to process them.';
+    return;
+  }
   if (!d) {
     wrap.className = 'status-banner banner-unknown';
     el('banner-title').textContent  = 'No Data';
@@ -375,16 +387,24 @@ function renderBanner(d) {
     `  ·  Updated: ${fmtTime(d.mlProcessedAt)}`;
 }
 
-function renderSensors(d) {
-  if (!d) return;
-  el('s-flow').textContent     = f1(d.flowSensorData);
-  el('s-pressure').textContent = f1(d.pressureSensorData);
-  el('s-tank').textContent     = f1(d.tankLevelSensorData);
-  el('s-turbid').textContent   = f1(d.turbiditySensorData);
-  setHint('s-flow-hint', d.flowAnomaly);
-  setHint('s-pressure-hint', d.pressureAnomaly);
-  setHint('s-tank-hint', d.tankLevelAnomaly);
-  const wq = (d.waterQualityStatus || '').toUpperCase();
+function renderSensors(sensor, prediction, predictionCurrent) {
+  const readings = sensor || prediction;
+  if (!readings) return;
+  el('s-flow').textContent     = f1(readings.flowSensorData);
+  el('s-pressure').textContent = f1(readings.pressureSensorData);
+  el('s-tank').textContent     = f1(readings.tankLevelSensorData);
+  el('s-turbid').textContent   = f1(readings.turbiditySensorData);
+  setHint('s-flow-hint', predictionCurrent ? prediction?.flowAnomaly : null);
+  setHint('s-pressure-hint', predictionCurrent ? prediction?.pressureAnomaly : null);
+  setHint('s-tank-hint', predictionCurrent ? prediction?.tankLevelAnomaly : null);
+  if (!predictionCurrent) {
+    for (const id of ['s-flow-hint', 's-pressure-hint', 's-tank-hint', 's-turbid-hint']) {
+      el(id).textContent = 'Prediction pending';
+      el(id).className = 'kpi-sub';
+    }
+    return;
+  }
+  const wq = (prediction?.waterQualityStatus || '').toUpperCase();
   const h  = el('s-turbid-hint');
   const m  = { GOOD:['ok','Good quality'], MODERATE:['warn','Moderate quality'], POOR:['bad','Poor quality'] }[wq];
   if (m) { h.textContent = m[1]; h.className = `kpi-sub ${m[0]}`; } else { h.textContent = ''; }
@@ -395,7 +415,15 @@ function setHint(id, val) {
   e.className   = bad ? 'kpi-sub bad' : 'kpi-sub ok';
 }
 
-function renderLeak(d) {
+function renderLeak(d, predictionPending = false) {
+  if (predictionPending) {
+    el('leak-status').className = 'status-pill sp-warn';
+    el('leak-status-text').textContent = 'PREDICTION PENDING';
+    el('leak-sev').textContent = '—';
+    el('leak-prob').textContent = '—';
+    el('prob-bar').style.width = '0%';
+    return;
+  }
   if (!d) return;
   const isLeak = d.mlPredictionData === 1;
   el('leak-status').className        = isLeak ? 'status-pill sp-bad' : 'status-pill sp-ok';
@@ -408,23 +436,36 @@ function renderLeak(d) {
   bar.className   = 'progress-fill' + (prob >= 80 ? ' pf-red' : prob >= 50 ? ' pf-amber' : ' pf-green');
 }
 
-function renderAnomalies(d) {
+function renderAnomalies(d, predictionPending = false) {
+  if (predictionPending) {
+    for (const id of ['anom-flow', 'anom-pressure', 'anom-tank']) {
+      el(id).textContent = 'Pending';
+    }
+    return;
+  }
   if (!d) return;
   el('anom-flow').innerHTML     = anomBadge(d.flowAnomaly);
   el('anom-pressure').innerHTML = anomBadge(d.pressureAnomaly);
   el('anom-tank').innerHTML     = anomBadge(d.tankLevelAnomaly);
 }
 
-function renderWQ(d) {
-  if (!d) return;
-  const wq = (d.waterQualityStatus || 'unknown').toLowerCase();
-  el('wq-status').className        = wq === 'good' ? 'status-pill sp-ok' : wq === 'moderate' ? 'status-pill sp-warn' : 'status-pill sp-bad';
-  el('wq-status-text').textContent = wq.toUpperCase();
-  el('wq-turbid').textContent      = f1(d.turbiditySensorData) + ' NTU';
-  el('wq-ml').innerHTML            = statusBadge((d.overallSystemStatus || '').toLowerCase());
+function renderWQ(d, sensor, predictionCurrent) {
+  const wq = predictionCurrent ? (d?.waterQualityStatus || 'unknown').toLowerCase() : 'unknown';
+  el('wq-status').className        = !predictionCurrent || wq === 'moderate' ? 'status-pill sp-warn' : wq === 'good' ? 'status-pill sp-ok' : 'status-pill sp-bad';
+  el('wq-status-text').textContent = predictionCurrent ? wq.toUpperCase() : 'PENDING';
+  el('wq-turbid').textContent      = f1(sensor?.turbiditySensorData ?? d?.turbiditySensorData) + ' NTU';
+  el('wq-ml').innerHTML            = predictionCurrent
+    ? statusBadge((d?.overallSystemStatus || '').toLowerCase())
+    : statusBadge('unknown');
 }
 
-function renderLoss(d) {
+function renderLoss(d, predictionPending = false) {
+  if (predictionPending) {
+    el('wl-rate').textContent = '—';
+    el('wl-flow').textContent = '—';
+    el('wl-vol').textContent  = '—';
+    return;
+  }
   if (!d) return;
   el('wl-rate').textContent = f2(d.waterLossRate);
   el('wl-flow').textContent = f2(d.waterLossFlowLoss);
