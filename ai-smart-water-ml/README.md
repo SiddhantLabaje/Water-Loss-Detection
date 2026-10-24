@@ -153,6 +153,8 @@ ai-smart-water-ml/
 └── .gitignore
 ```
 
+The trained `.pkl` model files are required at runtime and must be included in Git deployments (including the Render prediction worker).
+
 ---
 
 ## 4. Requirements

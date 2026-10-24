@@ -9,12 +9,18 @@ node_modules/
 # Python
 __pycache__/
 *.py[cod]
-*.pkl
 *.egg-info/
 dist/
 build/
 .venv/
 venv/
+
+# Required trained models for the deployed prediction worker
+!ai-smart-water-ml/models/leak_detection/current_model.pkl
+!ai-smart-water-ml/models/anomaly_detection/flow_model.pkl
+!ai-smart-water-ml/models/anomaly_detection/pressure_model.pkl
+!ai-smart-water-ml/models/anomaly_detection/tank_level_model.pkl
+!ai-smart-water-ml/models/water_loss/current_model.pkl
 
 # Jupyter
 .ipynb_checkpoints/

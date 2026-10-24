@@ -88,7 +88,7 @@ Keep this process running alongside the Node.js backend. The backend stores raw 
 > python src/pipeline/training_pipeline.py
 > ```
 
-The Render blueprint deploys the ML pipeline as a background worker. It uses the backend's `MONGO_URI` and the `water_loss_detection` database, so both services read and write the same collections.
+The Render blueprint deploys the ML pipeline as a background worker. It uses the backend's `MONGO_URI` and the `water_loss_detection` database, so both services read and write the same collections. The five trained `.pkl` model files under `ai-smart-water-ml/models/` must be committed to Git for the worker to load them.
 
 ### 3 — Open the dashboard
 
