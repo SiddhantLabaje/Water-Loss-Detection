@@ -111,10 +111,11 @@ def fetch_unprocessed_records(
     list[dict]  Unprocessed sensor documents
     """
     # Get all sensor _ids that have already been predicted
-    processed_ids = set(
+    processed_ids = {
         doc["sensorDocumentId"]
         for doc in prediction_col.find({}, {"sensorDocumentId": 1})
-    )
+        if doc.get("sensorDocumentId") is not None
+    }
 
     # Return sensor documents not yet predicted
     all_sensors = list(sensor_col.find())
