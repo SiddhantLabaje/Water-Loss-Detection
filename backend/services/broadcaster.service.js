@@ -1,19 +1,22 @@
 /**
  * Broadcaster service.
  *
- * Polls the database every 5 seconds and pushes a full "snapshot"
- * event to all connected SSE clients whenever the latest prediction
- * document ID changes (i.e. new data from the ML pipeline).
- *
- * This fires independently of the ThingSpeak cron so the frontend
- * always gets the freshest ML result as soon as it lands in Mongo.
+ * Polls the database every 5 seconds and:
+ *  1. Pushes a full "snapshot" SSE event to all connected browser clients
+ *     whenever the latest prediction document ID changes.
+ *  2. Auto-sends an alert email when a new CRITICAL or WARNING prediction
+ *     arrives AND the saved email settings have alertOnCritical = true.
  */
 
 import MlPrediction    from '../models/mlPrediction.model.js';
 import DashboardAnalytics from '../models/dashboardAnalytics.model.js';
+import EmailSettings   from '../models/emailSettings.model.js';
 import { broadcast, clientCount } from './sse.service.js';
+import { sendDashboardReport } from './email.service.js';
 
-let lastSeenId = null;   // _id string of the last prediction we broadcasted
+let lastSeenId        = null;   // _id of the last prediction we processed
+let lastAlertedId     = null;   // _id of the last prediction we emailed about
+let emailCooldownUntil = 0;     // timestamp — prevents spam if alerts fire rapidly
 
 /**
  * Collect all data needed for a full dashboard snapshot in one shot.
@@ -65,25 +68,58 @@ async function buildSnapshot() {
 }
 
 /**
- * Check for a new prediction and broadcast if changed.
+ * Check for a new prediction, broadcast SSE snapshot, and fire alert email
+ * if the prediction is CRITICAL or WARNING and alertOnCritical is enabled.
  */
 async function tick() {
   try {
-    // Nothing to do if nobody is listening
-    if (clientCount() === 0) return;
-
-    const latest = await MlPrediction.findOne().sort({ _id: -1 }).select('_id').lean();
+    const latest = await MlPrediction.findOne().sort({ _id: -1 }).select('_id overallSystemStatus mlPredictionData').lean();
     if (!latest) return;
 
     const currentId = latest._id.toString();
-    if (currentId === lastSeenId) return; // no new data
+    const isNew     = currentId !== lastSeenId;
 
-    lastSeenId = currentId;
+    // ── 1. SSE broadcast ────────────────────────────────────────────────────
+    if (isNew && clientCount() > 0) {
+      lastSeenId = currentId;
+      const snapshot = await buildSnapshot();
+      broadcast('snapshot', snapshot);
+      console.log(`[SSE] Broadcasted snapshot to ${clientCount()} client(s) — new prediction ${currentId}`);
+    } else if (isNew) {
+      // Still update lastSeenId even if no clients are connected
+      lastSeenId = currentId;
+    }
 
-    const snapshot = await buildSnapshot();
-    broadcast('snapshot', snapshot);
+    // ── 2. Auto alert email ─────────────────────────────────────────────────
+    // Only fire if: new prediction, not already emailed for this doc,
+    // status is CRITICAL or WARNING, cooldown has passed, and alertOnCritical is enabled
+    const isAlertStatus = ['CRITICAL', 'WARNING'].includes(latest.overallSystemStatus);
 
-    console.log(`[SSE] Broadcasted snapshot to ${clientCount()} client(s) — new prediction ${currentId}`);
+    if (isNew && isAlertStatus && currentId !== lastAlertedId && Date.now() > emailCooldownUntil) {
+      try {
+        const settings = await EmailSettings.findOne().lean();
+
+        if (settings?.alertOnCritical && settings?.recipientEmail) {
+          lastAlertedId     = currentId;
+          emailCooldownUntil = Date.now() + 5 * 60 * 1000; // 5-minute cooldown between emails
+
+          // Fire-and-forget — don't block the tick
+          sendDashboardReport({
+            to:   settings.recipientEmail,
+            name: settings.recipientName || 'Dashboard User',
+            cc:   settings.ccEmails || [],
+            subject: `[${latest.overallSystemStatus}] Water Monitor Alert — Leak Detected`,
+          }).then(result => {
+            console.log(`[EMAIL] Auto-alert sent to ${settings.recipientEmail} — status: ${latest.overallSystemStatus} (msgId: ${result.messageId})`);
+          }).catch(err => {
+            console.error(`[EMAIL] Auto-alert failed: ${err.message}`);
+          });
+        }
+      } catch (emailErr) {
+        console.error('[EMAIL] Failed to load email settings:', emailErr.message);
+      }
+    }
+
   } catch (err) {
     console.error('[SSE] Broadcaster error:', err.message);
   }
