@@ -9,12 +9,12 @@ services:
       - key: NODE_ENV
         value: production
       - key: MONGO_URI
-        sync: false          # you will paste this in Render dashboard
+        value: mongodb+srv://WLD:siddhant@wld.bh8jlfh.mongodb.net/water_loss_detection?retryWrites=true&w=majority
       - key: CHANNEL_ID
-        sync: false
+        value: "3445219"
       - key: READ_API_KEY
-        sync: false
+        value: 6PILE5SJIDU76BGD
       - key: EMAIL_USER
-        sync: false
+        value: labajesiddhant07@gmail.com
       - key: EMAIL_PASS
-        sync: false
+        sync: false   # paste manually in Render dashboard (keep app passwords private)
