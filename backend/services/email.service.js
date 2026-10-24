@@ -12,11 +12,15 @@ import MlPrediction from "../models/mlPrediction.model.js";
 
 // ── SMTP transporter ──────────────────────────────────────────────────────────
 function createTransporter() {
+  // Strip spaces from App Password — Gmail app passwords are 16 chars, no spaces.
+  // The .env may store them with spaces for readability (e.g. "xxxx xxxx xxxx xxxx").
+  const pass = (process.env.EMAIL_PASS || "").replace(/\s/g, "");
+
   return nodemailer.createTransport({
     service: "gmail",
     auth: {
       user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
+      pass,
     },
   });
 }
@@ -197,6 +201,10 @@ export async function sendDashboardReport({ to, name = "Dashboard User", cc = []
   const defaultSubject = `[${status}] Water Monitor Alert — ${new Date().toLocaleDateString()}`;
 
   const transporter = createTransporter();
+
+  // Verify credentials before sending so we get a clear error, not a timeout
+  await transporter.verify();
+
   const info = await transporter.sendMail({
     from: `"Smart Water Monitor" <${process.env.EMAIL_USER}>`,
     to,
