@@ -81,10 +81,14 @@ cd ai-smart-water-ml     # (in the mlmodel folder)
 python src/pipeline/prediction_pipeline.py
 ```
 
+Keep this process running alongside the Node.js backend. The backend stores raw sensor readings; this pipeline processes new readings and writes the predictions shown on the dashboard. If the pipeline is stopped, the sensor page may update while the dashboard's predictions remain stale.
+
 > Train first if you haven't yet:
 > ```bash
 > python src/pipeline/training_pipeline.py
 > ```
+
+The Render blueprint deploys the ML pipeline as a background worker. It uses the backend's `MONGO_URI` and the `water_loss_detection` database, so both services read and write the same collections.
 
 ### 3 — Open the dashboard
 

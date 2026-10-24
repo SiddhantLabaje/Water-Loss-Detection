@@ -18,3 +18,20 @@ services:
         value: labajesiddhant07@gmail.com
       - key: EMAIL_PASS
         sync: false   # paste manually in Render dashboard (keep app passwords private)
+
+  - type: worker
+    name: water-loss-ml-pipeline
+    runtime: python
+    rootDir: ai-smart-water-ml
+    buildCommand: pip install -r requirements.txt
+    startCommand: python src/pipeline/prediction_pipeline.py
+    envVars:
+      - key: MONGO_URI
+        fromService:
+          type: web
+          name: smart-water-monitor
+          envVarKey: MONGO_URI
+      - key: MONGO_DATABASE
+        value: water_loss_detection
+      - key: MONGO_COLLECTION
+        value: sensors
