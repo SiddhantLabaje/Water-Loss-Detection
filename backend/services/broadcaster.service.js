@@ -4,8 +4,8 @@
  * Polls the database every 5 seconds and:
  *  1. Pushes a full "snapshot" SSE event to all connected browser clients
  *     whenever the latest prediction document ID changes.
- *  2. Auto-sends an alert email when a new CRITICAL or WARNING prediction
- *     arrives AND the saved email settings have alertOnCritical = true.
+ *  2. Auto-sends an alert email when a new leak prediction arrives
+ *     AND the saved email settings have alertOnCritical = true.
  */
 
 import MlPrediction    from '../models/mlPrediction.model.js';
@@ -69,8 +69,8 @@ async function buildSnapshot() {
 }
 
 /**
- * Check for a new prediction, broadcast SSE snapshot, and fire alert email
- * if the prediction is CRITICAL or WARNING and alertOnCritical is enabled.
+ * Check for a new prediction, broadcast SSE snapshot, and fire an alert email
+ * if a leak is detected and alertOnCritical is enabled.
  */
 async function tick() {
   try {
@@ -82,7 +82,7 @@ async function tick() {
 
     const currentId    = latest._id.toString();
     const isNew        = currentId !== lastSeenId;
-    const isAlertStatus = ['CRITICAL', 'WARNING'].includes(latest.overallSystemStatus);
+    const isLeak = latest.mlPredictionData === 1;
 
     // ── 1. SSE broadcast ────────────────────────────────────────────────────
     if (isNew) {
@@ -96,15 +96,15 @@ async function tick() {
 
     // ── 2. Auto alert email ─────────────────────────────────────────────────
     // Fire when:
-    //   a) A brand-new CRITICAL/WARNING prediction arrived (isNew), OR
+    //   a) A brand-new leak prediction arrived (isNew), OR
     //   b) On the first tick after startup if the latest record is already
-    //      CRITICAL/WARNING and hasn't been alerted yet (!startupAlertDone)
+    //      a leak and hasn't been alerted yet (!startupAlertDone)
     const shouldCheckAlert = isNew || !startupAlertDone;
     startupAlertDone = true; // only suppress the startup re-check once
 
     if (
       shouldCheckAlert &&
-      isAlertStatus &&
+      isLeak &&
       currentId !== lastAlertedId &&
       Date.now() > emailCooldownUntil
     ) {

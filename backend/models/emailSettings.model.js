@@ -23,7 +23,7 @@ const emailSettingsSchema = new mongoose.Schema(
       trim: true,
       default: "Dashboard User",
     },
-    // Whether to also auto-send on CRITICAL alerts
+    // Whether to auto-send when a leak prediction is detected
     alertOnCritical: {
       type: Boolean,
       default: false,

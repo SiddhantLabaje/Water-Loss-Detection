@@ -337,7 +337,7 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label">Alert on Critical Status</label>
+            <label class="form-label">Automatic Leak Alerts</label>
             <div class="toggle-row">
               <label class="toggle" for="alertOnCritical">
                 <input type="checkbox" id="alertOnCritical" />
@@ -345,7 +345,7 @@
                 <div class="toggle-thumb"></div>
               </label>
               <span style="font-size:13px;color:var(--text-2);">
-                Automatically send a report email whenever a CRITICAL alert is detected
+                Automatically email the saved recipient whenever a new leak is detected
               </span>
             </div>
           </div>
@@ -426,7 +426,7 @@ function renderCurrentSettings(s) {
     <div class="cs-row"><span class="cs-key">Email</span><span class="cs-val">${esc(s.recipientEmail)}</span></div>
     <div class="cs-row"><span class="cs-key">Name</span><span class="cs-val">${esc(s.recipientName || '—')}</span></div>
     <div class="cs-row"><span class="cs-key">CC</span><span class="cs-val">${esc((s.ccEmails && s.ccEmails.length > 0) ? s.ccEmails.join(', ') : '—')}</span></div>
-    <div class="cs-row"><span class="cs-key">Alert on Critical</span><span class="cs-val">${s.alertOnCritical ? '✅ Yes' : '❌ No'}</span></div>
+    <div class="cs-row"><span class="cs-key">Automatic Leak Alerts</span><span class="cs-val">${s.alertOnCritical ? '✅ Yes' : '❌ No'}</span></div>
   `;
 }
 
