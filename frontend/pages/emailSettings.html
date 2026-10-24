@@ -589,30 +589,21 @@ function showResult(id, type, html) {
 function setLoading(_on) {}
 
 async function apiGet(path) {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 20000); // 20s — covers Render cold-start
-  try {
-    const r = await fetch(API + path, { signal: ctrl.signal });
-    const data = await r.json();
-    if (!r.ok) { const err = new Error(data.message || r.status); err.status = r.status; throw err; }
-    return data;
-  } finally { clearTimeout(t); }
+  const r = await fetch(API + path);
+  const data = await r.json();
+  if (!r.ok) { const err = new Error(data.message || r.status); err.status = r.status; throw err; }
+  return data;
 }
 
 async function apiPost(path, body) {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 35000); // 35s — covers Render cold-start + SMTP send
-  try {
-    const r = await fetch(API + path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: ctrl.signal,
-    });
-    const data = await r.json();
-    if (!r.ok) throw new Error(data.message || r.status);
-    return data;
-  } finally { clearTimeout(t); }
+  const r = await fetch(API + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.message || r.status);
+  return data;
 }
 
 </script>
