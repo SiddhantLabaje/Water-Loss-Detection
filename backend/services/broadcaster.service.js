@@ -17,6 +17,7 @@ import { sendDashboardReport } from './email.service.js';
 let lastSeenId        = null;   // _id of the last prediction we processed
 let lastAlertedId     = null;   // _id of the last prediction we emailed about
 let emailCooldownUntil = 0;     // timestamp — prevents spam if alerts fire rapidly
+let startupAlertDone  = false;  // tracks whether we checked for an active alert on boot
 
 /**
  * Collect all data needed for a full dashboard snapshot in one shot.
@@ -73,47 +74,61 @@ async function buildSnapshot() {
  */
 async function tick() {
   try {
-    const latest = await MlPrediction.findOne().sort({ _id: -1 }).select('_id overallSystemStatus mlPredictionData').lean();
+    const latest = await MlPrediction.findOne()
+      .sort({ _id: -1 })
+      .select('_id overallSystemStatus mlPredictionData')
+      .lean();
     if (!latest) return;
 
-    const currentId = latest._id.toString();
-    const isNew     = currentId !== lastSeenId;
+    const currentId    = latest._id.toString();
+    const isNew        = currentId !== lastSeenId;
+    const isAlertStatus = ['CRITICAL', 'WARNING'].includes(latest.overallSystemStatus);
 
     // ── 1. SSE broadcast ────────────────────────────────────────────────────
-    if (isNew && clientCount() > 0) {
+    if (isNew) {
       lastSeenId = currentId;
-      const snapshot = await buildSnapshot();
-      broadcast('snapshot', snapshot);
-      console.log(`[SSE] Broadcasted snapshot to ${clientCount()} client(s) — new prediction ${currentId}`);
-    } else if (isNew) {
-      // Still update lastSeenId even if no clients are connected
-      lastSeenId = currentId;
+      if (clientCount() > 0) {
+        const snapshot = await buildSnapshot();
+        broadcast('snapshot', snapshot);
+        console.log(`[SSE] Broadcasted snapshot to ${clientCount()} client(s) — new prediction ${currentId}`);
+      }
     }
 
     // ── 2. Auto alert email ─────────────────────────────────────────────────
-    // Only fire if: new prediction, not already emailed for this doc,
-    // status is CRITICAL or WARNING, cooldown has passed, and alertOnCritical is enabled
-    const isAlertStatus = ['CRITICAL', 'WARNING'].includes(latest.overallSystemStatus);
+    // Fire when:
+    //   a) A brand-new CRITICAL/WARNING prediction arrived (isNew), OR
+    //   b) On the first tick after startup if the latest record is already
+    //      CRITICAL/WARNING and hasn't been alerted yet (!startupAlertDone)
+    const shouldCheckAlert = isNew || !startupAlertDone;
+    startupAlertDone = true; // only suppress the startup re-check once
 
-    if (isNew && isAlertStatus && currentId !== lastAlertedId && Date.now() > emailCooldownUntil) {
+    if (
+      shouldCheckAlert &&
+      isAlertStatus &&
+      currentId !== lastAlertedId &&
+      Date.now() > emailCooldownUntil
+    ) {
       try {
         const settings = await EmailSettings.findOne().lean();
 
         if (settings?.alertOnCritical && settings?.recipientEmail) {
-          lastAlertedId     = currentId;
-          emailCooldownUntil = Date.now() + 5 * 60 * 1000; // 5-minute cooldown between emails
+          lastAlertedId      = currentId;
+          emailCooldownUntil = Date.now() + 5 * 60 * 1000; // 5-min cooldown
 
-          // Fire-and-forget — don't block the tick
           sendDashboardReport({
-            to:   settings.recipientEmail,
-            name: settings.recipientName || 'Dashboard User',
-            cc:   settings.ccEmails || [],
+            to:      settings.recipientEmail,
+            name:    settings.recipientName || 'Dashboard User',
+            cc:      settings.ccEmails || [],
             subject: `[${latest.overallSystemStatus}] Water Monitor Alert — Leak Detected`,
           }).then(result => {
             console.log(`[EMAIL] Auto-alert sent to ${settings.recipientEmail} — status: ${latest.overallSystemStatus} (msgId: ${result.messageId})`);
           }).catch(err => {
             console.error(`[EMAIL] Auto-alert failed: ${err.message}`);
+            // Reset so it retries on the next new prediction
+            lastAlertedId = null;
           });
+        } else {
+          console.log(`[EMAIL] Alert skipped — alertOnCritical=${settings?.alertOnCritical}, recipientEmail=${settings?.recipientEmail || 'not set'}`);
         }
       } catch (emailErr) {
         console.error('[EMAIL] Failed to load email settings:', emailErr.message);
@@ -129,11 +144,20 @@ async function tick() {
  * Called once on startup — sends the current snapshot immediately
  * when the first client connects (handled by the route), and also
  * starts the polling interval.
+ *
+ * We do NOT pre-seed lastAlertedId here — this means if the server
+ * restarts and the latest record is still CRITICAL/WARNING and
+ * alertOnCritical is enabled, one alert email will fire within the
+ * first 5-second tick. That's the correct behaviour: Render redeploys
+ * should not silently swallow an active alert.
  */
 export async function getInitialSnapshot() {
   try {
     const snapshot = await buildSnapshot();
     if (snapshot.latest) {
+      // Seed lastSeenId so SSE doesn't re-broadcast on the very first tick,
+      // but do NOT seed lastAlertedId — let the first tick decide whether
+      // an alert email is needed for the current state.
       lastSeenId = snapshot.latest._id.toString();
     }
     return snapshot;

@@ -3,6 +3,7 @@ import {
   saveEmailSettings,
   getEmailSettings,
   sendReportNow,
+  testAlert,
 } from "../controllers/email.controller.js";
 
 const router = Router();
@@ -15,5 +16,8 @@ router.post("/settings", saveEmailSettings);
 
 // POST /api/email/send-report — send the dashboard report immediately
 router.post("/send-report", sendReportNow);
+
+// POST /api/email/test-alert  — trigger a test alert using saved settings
+router.post("/test-alert", testAlert);
 
 export default router;

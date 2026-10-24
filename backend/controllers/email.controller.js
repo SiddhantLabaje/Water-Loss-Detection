@@ -8,6 +8,7 @@
 
 import EmailSettings from "../models/emailSettings.model.js";
 import { sendDashboardReport } from "../services/email.service.js";
+import MlPrediction from "../models/mlPrediction.model.js";
 
 // ── Save / update recipient settings ─────────────────────────────────────────
 export const saveEmailSettings = async (req, res) => {
@@ -74,11 +75,9 @@ export const getEmailSettings = async (req, res) => {
 // ── Send dashboard report NOW ─────────────────────────────────────────────────
 export const sendReportNow = async (req, res) => {
   try {
-    // Allow overriding recipient via request body, or fall back to saved settings
     let { recipientEmail, recipientName, ccEmails } = req.body;
 
     if (!recipientEmail) {
-      // Load from saved settings
       const settings = await EmailSettings.findOne();
       if (!settings) {
         return res.status(400).json({
@@ -105,12 +104,45 @@ export const sendReportNow = async (req, res) => {
       rejected:  result.rejected,
     });
   } catch (err) {
-    // Provide a friendly message for common SMTP errors
     const isAuth = err.message?.includes("Invalid login") || err.code === "EAUTH";
     res.status(500).json({
       message: isAuth
         ? "SMTP authentication failed. Check EMAIL_USER and EMAIL_PASS in your .env file. " +
           "Make sure you are using a Gmail App Password, not your regular password."
+        : err.message,
+    });
+  }
+};
+
+// ── Test auto-alert (fires immediately using saved settings) ──────────────────
+export const testAlert = async (req, res) => {
+  try {
+    const settings = await EmailSettings.findOne();
+    if (!settings?.recipientEmail) {
+      return res.status(400).json({ message: "No saved email settings found. Save settings first." });
+    }
+
+    const latest = await MlPrediction.findOne().sort({ _id: -1 }).lean();
+    const status  = latest?.overallSystemStatus || "UNKNOWN";
+
+    const result = await sendDashboardReport({
+      to:      settings.recipientEmail,
+      name:    settings.recipientName || "Dashboard User",
+      cc:      settings.ccEmails || [],
+      subject: `[TEST] Water Monitor Alert — ${status}`,
+    });
+
+    res.json({
+      message:   `Test alert sent to ${settings.recipientEmail}.`,
+      status,
+      messageId: result.messageId,
+      accepted:  result.accepted,
+    });
+  } catch (err) {
+    const isAuth = err.message?.includes("Invalid login") || err.code === "EAUTH";
+    res.status(500).json({
+      message: isAuth
+        ? "SMTP authentication failed. Check EMAIL_USER and EMAIL_PASS in .env."
         : err.message,
     });
   }

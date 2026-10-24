@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Email Reports — Smart Water Monitor</title>
-<link rel="stylesheet" href="../shared.css">
+<link rel="stylesheet" href="/shared.css">
 <style>
   .form-group { margin-bottom: 18px; }
   .form-label {
@@ -380,6 +380,9 @@
             <button type="button" class="btn-send" id="send-btn" onclick="sendReport()" disabled>
               📧 Send Report Now
             </button>
+            <button type="button" class="btn-send" id="test-btn" onclick="testAlert()" disabled style="background:#7c3aed;">
+              🔔 Test Alert Email
+            </button>
           </div>
 
         </form>
@@ -418,6 +421,7 @@ async function loadSettings() {
     renderCurrentSettings(s);
     el('current-section').style.display = '';
     el('send-btn').disabled = false;
+    el('test-btn').disabled = false;
     el('updated').textContent = 'Settings loaded';
   } catch (e) {
     if (e.status === 404) {
@@ -487,6 +491,8 @@ async function saveSettings(e) {
     renderCurrentSettings(result.settings);
     el('current-section').style.display = '';
     el('send-btn').disabled = false;
+    el('test-btn').disabled = false;
+    el('current-section').style.display = '';
     el('updated').textContent = 'Saved at ' + new Date().toLocaleTimeString();
   } catch (err) {
     showResult('save-result', 'error', '❌ ' + (err.message || 'Failed to save settings.'));
@@ -555,6 +561,34 @@ async function quickSend() {
   } finally {
     btn.disabled = false;
     btn.textContent = '📧 Send Report Now';
+    setLoading(false);
+  }
+}
+
+// ── Test alert (fires the auto-alert path with saved settings) ─────────────
+async function testAlert() {
+  const btn = el('test-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Sending...';
+  setLoading(true);
+
+  try {
+    const result = await apiPost('/email/test-alert', {});
+    showResult('send-result', 'success',
+      `🔔 Test alert sent to <strong>${esc(result.accepted?.[0] || '—')}</strong>. ` +
+      `System status: <strong>${result.status}</strong>. Check your inbox!`
+    );
+    el('test-btn').disabled = false;
+  } catch (err) {
+    const isAuth = err.message && err.message.includes('authentication');
+    showResult('send-result', 'error',
+      isAuth
+        ? '❌ SMTP auth failed — check EMAIL_USER and EMAIL_PASS in .env.'
+        : '❌ ' + (err.message || 'Test alert failed.')
+    );
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔔 Test Alert Email';
     setLoading(false);
   }
 }
