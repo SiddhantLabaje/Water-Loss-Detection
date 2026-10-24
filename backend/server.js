@@ -6,6 +6,7 @@ import app from "./app.js";
 
 import "./services/cronJob.service.js";
 import "./services/broadcaster.service.js";  // SSE real-time broadcaster
+import "./services/keepAlive.service.js";    // prevents Render free-tier sleep
 
 connectDatabase();
 

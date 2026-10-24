@@ -8,6 +8,11 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: RENDER_EXTERNAL_URL
+        fromService:
+          type: web
+          name: smart-water-monitor
+          property: host
       - key: MONGO_URI
         value: mongodb+srv://WLD:siddhant@wld.bh8jlfh.mongodb.net/water_loss_detection?retryWrites=true&w=majority
       - key: CHANNEL_ID

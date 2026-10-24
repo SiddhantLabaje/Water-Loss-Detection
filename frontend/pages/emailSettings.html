@@ -590,7 +590,7 @@ function setLoading(_on) {}
 
 async function apiGet(path) {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 15000); // 15s timeout
+  const t = setTimeout(() => ctrl.abort(), 20000); // 20s — covers Render cold-start
   try {
     const r = await fetch(API + path, { signal: ctrl.signal });
     const data = await r.json();
@@ -601,7 +601,7 @@ async function apiGet(path) {
 
 async function apiPost(path, body) {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 20000); // 20s timeout for email sends
+  const t = setTimeout(() => ctrl.abort(), 35000); // 35s — covers Render cold-start + SMTP send
   try {
     const r = await fetch(API + path, {
       method: 'POST',
