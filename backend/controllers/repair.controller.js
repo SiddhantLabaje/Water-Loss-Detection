@@ -8,10 +8,12 @@
  *   GET  /api/repairs/:id/verification-history — audit trail for an event
  */
 
-import LeakEvent       from "../models/leakEvent.model.js";
-import RepairAssignment from "../models/repairAssignment.model.js";
-import MlPrediction    from "../models/mlPrediction.model.js";
-import { audit }       from "../services/audit.service.js";
+import LeakEvent        from "../models/leakEvent.model.js";
+import RepairAssignment  from "../models/repairAssignment.model.js";
+import MlPrediction      from "../models/mlPrediction.model.js";
+import User              from "../models/user.model.js";
+import { audit }         from "../services/audit.service.js";
+import { sendRecoveryResult } from "../services/notification.service.js";
 
 // ---------------------------------------------------------------------------
 // GET /api/repairs/history
@@ -51,7 +53,7 @@ export async function getRepair(req, res) {
     if (!event) return res.status(404).json({ message: "Repair event not found." });
 
     // Attach the assignment if one exists
-    const assignment = await RepairAssignment.findOne({ leakEvent: event._id })
+    const assignment = await RepairAssignment.findOne({ incidentId: event._id })
       .populate("plumber", "name email")
       .lean();
 
@@ -89,7 +91,17 @@ export async function verifyRecovery(req, res) {
         at:        new Date(),
       });
       await event.save();
-      await audit(req.user._id, "RECOVERY_VERIFIED", { eventId: event._id, recentNormal });
+      await audit(req.user._id, "RECOVERY_VERIFIED", "LeakEvent", event._id, { recentNormal }, req);
+
+      // Notify all admins of successful recovery
+      try {
+        const admins = await User.find({ role: "admin", accountStatus: "active", emailVerified: true })
+          .select("name email").lean();
+        for (const admin of admins) {
+          sendRecoveryResult(admin.email, admin.name, event, "verified").catch(() => {});
+        }
+      } catch { /* non-critical */ }
+
       return res.json({ recovered: true, event });
     }
 

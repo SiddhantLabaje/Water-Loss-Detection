@@ -90,7 +90,8 @@ async function loadRecipient() {
   $('owner-form').elements.ownerEmail.value=settings.ownerEmail||'';
 }
 async function loadPlumbers() {
-  const profiles=await api(`/admin/plumbers?status=${encodeURIComponent($('plumber-filter').value)}`);
+  const result=await api(`/admin/plumbers?status=${encodeURIComponent($('plumber-filter').value)}`);
+  const profiles=result.data||result;
   $('plumbers').innerHTML=profiles.length?profiles.map(profile=>{
     const user=profile.userId||{};
     const actions=profile.approvalStatus==='pending'
@@ -103,7 +104,8 @@ async function loadPlumbers() {
 }
 async function loadLeaks() {
   const status=$('leak-filter').value;
-  const leaks=await api(`/admin/leaks?limit=100${status?'&status='+encodeURIComponent(status):''}`);
+  const result=await api(`/admin/leaks?limit=100${status?'&status='+encodeURIComponent(status):''}`);
+  const leaks=result.data||result;
   $('leaks').innerHTML=leaks.length?leaks.map(leak=>`<article class="record">
     <div class="record-head"><div><h3>${esc(leak.incidentId)} · ${esc(leak.severity)}</h3><div class="metric-sub">Detected ${esc(leak.sensorSnapshot?.detectedAt ? new Date(leak.sensorSnapshot.detectedAt).toLocaleString() : 'unknown')} · ${esc(leak.status)}</div>
     <div>Flow ${esc(leak.sensorSnapshot?.flowSensorData)} L/min · Pressure ${esc(leak.sensorSnapshot?.pressureSensorData)} PSI · Estimated loss ${esc(leak.sensorSnapshot?.waterLossRate)} L/hr</div></div>
@@ -160,11 +162,11 @@ $('leaks').addEventListener('click',async event=>{
   try{
     if(b.dataset.action==='open')await api(`/admin/leaks/${b.dataset.id}/status`,{method:'PATCH',body:JSON.stringify({status:'OPEN_FOR_PROPOSALS',reason:'Administrator opened proposals.'})});
     if(b.dataset.action==='cancel'){if(!confirm('Cancel this incident?'))return;await api(`/admin/leaks/${b.dataset.id}/status`,{method:'PATCH',body:JSON.stringify({status:'CANCELLED',reason:'Cancelled by administrator.'})});}
-    if(b.dataset.action==='verify'){const result=await api(`/admin/leaks/${b.dataset.id}/verify-recovery`,{method:'POST',body:'{}'});message('page-message',result.message,result.status==='verified');}
+    if(b.dataset.action==='verify'){const result=await api(`/repairs/${b.dataset.id}/verify-recovery`,{method:'POST',body:'{}'});message('page-message',result.message,result.recovered);}
     if(b.dataset.action==='retry-verification'){
       await api(`/admin/leaks/${b.dataset.id}/status`,{method:'PATCH',body:JSON.stringify({status:'VERIFYING_RECOVERY',reason:'Administrator requested a new recovery check.'})});
-      const result=await api(`/admin/leaks/${b.dataset.id}/verify-recovery`,{method:'POST',body:'{}'});
-      message('page-message',result.message,result.status==='verified');
+      const result=await api(`/repairs/${b.dataset.id}/verify-recovery`,{method:'POST',body:'{}'});
+      message('page-message',result.message,result.recovered);
     }
     if(b.dataset.action==='proposals'){
       const proposals=await api(`/admin/leaks/${b.dataset.id}/proposals`);

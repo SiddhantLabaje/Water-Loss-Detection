@@ -45,19 +45,30 @@ export async function getDashboard(req, res) {
       LeakEvent.find().sort({ createdAt: -1 }).limit(5).lean(),
     ]);
 
+    // Count submitted proposals and active assignments for dashboard KPIs
+    const [submittedProposals, activeAssignments, repairsAwaitingVerification] = await Promise.all([
+      (await import("../models/repairProposal.model.js")).default.countDocuments({ status: "submitted" }),
+      RepairAssignment.countDocuments({ status: { $in: ["assigned", "accepted", "in_progress"] } }),
+      LeakEvent.countDocuments({ status: { $in: ["VERIFYING_RECOVERY", "REPAIR_REPORTED_COMPLETE"] } }),
+    ]);
+
     res.json({
-      sensors: { total: totalSensors, latestPrediction },
-      leaks: {
-        total: leakEvents,
-        openForProposals,
-        assigned,
-        inProgress,
-        pendingVerification,
-        recovered,
+      // Flat counts shape consumed by admin.html
+      counts: {
+        sensors:                  totalSensors,
+        leakIncidents:            leakEvents,
+        pendingPlumbers,
+        submittedProposals,
+        activeAssignments,
+        repairsAwaitingVerification,
+        recoveredIncidents:       recovered,
       },
-      plumbers: { pendingApproval: pendingPlumbers },
-      predictions: { total: totalPredictions },
+      // Extra detail for the sensor-status line
+      latestPrediction,
       recentLeaks,
+      // Structured breakdown (for any future use)
+      leaks: { total: leakEvents, openForProposals, assigned, inProgress, pendingVerification: repairsAwaitingVerification, recovered },
+      plumbers: { pendingApproval: pendingPlumbers },
     });
   } catch (err) {
     console.error("admin dashboard error:", err);

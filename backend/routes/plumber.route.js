@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { body, param } from "express-validator";
-import { authenticate, requirePlumber } from "../middleware/auth.middleware.js";
+import { authenticate, requirePlumber, requireApprovedPlumber } from "../middleware/auth.middleware.js";
 import { validate } from "../middleware/validate.middleware.js";
 import {
   getProfile,
@@ -18,9 +18,11 @@ import {
 } from "../controllers/plumber.controller.js";
 
 const router = Router();
-router.use(authenticate, requirePlumber);
 
-// Profile
+// authenticate + full approval check (also loads req.plumberProfile)
+router.use(authenticate, requireApprovedPlumber);
+
+// Profile endpoints — always available to approved plumbers
 router.get("/profile", getProfile);
 router.patch("/profile", updateProfile);
 

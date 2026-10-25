@@ -5,7 +5,9 @@ import RepairAssignment from "../models/repairAssignment.model.js";
 import RepairProposal from "../models/repairProposal.model.js";
 import RepairRecord from "../models/repairRecord.model.js";
 import MlPrediction from "../models/mlPrediction.model.js";
+import User from "../models/user.model.js";
 import { audit } from "../services/audit.service.js";
+import { sendRepairComplete } from "../services/notification.service.js";
 
 const safeFields = "name email accountStatus emailVerified";
 
@@ -299,6 +301,17 @@ export async function submitCompletionReport(req, res) {
       }
     });
     await audit(req.user._id, "COMPLETION_REPORT_SUBMITTED", "RepairRecord", record._id, {}, req);
+
+    // Notify all admins that repair is complete and awaiting verification
+    try {
+      const leakEvent = await LeakEvent.findById(record.incidentId).lean();
+      const admins    = await User.find({ role: "admin", accountStatus: "active", emailVerified: true })
+        .select("name email").lean();
+      for (const admin of admins) {
+        sendRepairComplete(admin.email, admin.name, leakEvent, record).catch(() => {});
+      }
+    } catch { /* non-critical — don't block the response */ }
+
     res.status(201).json({
       message: "Completion report submitted. Sensor-based recovery verification is still required.",
       record,
