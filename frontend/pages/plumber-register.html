@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Plumber registration — Smart Water Monitor</title>
+  <link rel="stylesheet" href="/shared.css">
+  <style>
+    .auth-wrap { width:min(760px,calc(100% - 32px)); margin:5vh auto; }
+    .auth-card { background:#fff; padding:28px; border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow); }
+    .auth-card h1 { font-size:24px; margin-bottom:6px; }
+    .auth-card>p { color:var(--muted); margin-bottom:20px; }
+    .auth-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+    .auth-form label { display:grid; gap:6px; font-weight:600; }
+    .auth-form input,.auth-form textarea { width:100%; padding:10px 12px; border:1px solid var(--border-2); border-radius:var(--radius); font:inherit; }
+    .wide { grid-column:1/-1; }
+    .auth-form button { justify-content:center; }
+    .auth-message { min-height:24px; margin-top:14px; color:var(--danger); }
+    @media(max-width:600px) { .auth-form { grid-template-columns:1fr; } .wide { grid-column:auto; } }
+  </style>
+</head>
+<body>
+  <main class="auth-wrap">
+    <section class="auth-card">
+      <h1>Plumber registration</h1>
+      <p>Your account will remain pending until your email is verified and an administrator approves your profile.</p>
+      <form id="register-form" class="auth-form">
+        <label>Full name<input name="name" required minlength="2" maxlength="100" autocomplete="name"></label>
+        <label>Email<input name="email" type="email" required maxlength="254" autocomplete="email"></label>
+        <label>Phone<input name="phone" type="tel" required minlength="7" maxlength="30" autocomplete="tel"></label>
+        <label>Business name (optional)<input name="businessName" maxlength="120"></label>
+        <label>Password (12+ characters)<input name="password" type="password" required minlength="12" maxlength="128" autocomplete="new-password"></label>
+        <label>Confirm password<input name="confirmPassword" type="password" required minlength="12" maxlength="128" autocomplete="new-password"></label>
+        <label>Street address<input name="address" required minlength="3" maxlength="200" autocomplete="street-address"></label>
+        <label>City<input name="city" required minlength="2" maxlength="100" autocomplete="address-level2"></label>
+        <label>State / region<input name="state" required minlength="2" maxlength="100" autocomplete="address-level1"></label>
+        <label>Service radius (km)<input name="serviceRadiusKm" type="number" min="1" max="500" required value="25"></label>
+        <label>Experience (years)<input name="experienceYears" type="number" min="0" max="80" required value="0"></label>
+        <label>Plumbing skills (comma separated)<input name="skillsText" required placeholder="Leak repair, pipe fitting"></label>
+        <label>Working hours (optional)<input name="workingHours" maxlength="200" placeholder="Mon–Sat, 9:00–18:00"></label>
+        <label class="wide" style="display:flex;align-items:flex-start;gap:8px">
+          <input name="terms" type="checkbox" required style="width:auto;margin-top:4px">
+          <span>I agree to the platform terms and privacy policy.</span>
+        </label>
+        <button id="submit-button" class="btn wide" type="submit">Create plumber account</button>
+      </form>
+      <div id="message" class="auth-message" role="status" aria-live="polite"></div>
+      <a href="login.html">Already registered? Sign in</a>
+    </section>
+  </main>
+  <script>
+    const form = document.getElementById('register-form');
+    const message = document.getElementById('message');
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const values = Object.fromEntries(new FormData(form));
+      if (values.password !== values.confirmPassword) {
+        message.textContent = 'Passwords do not match.';
+        return;
+      }
+      const button = document.getElementById('submit-button');
+      button.disabled = true;
+      message.textContent = 'Submitting registration...';
+      try {
+        const response = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: values.name, email: values.email, phone: values.phone,
+            password: values.password, businessName: values.businessName,
+            address: values.address, city: values.city, state: values.state,
+            serviceRadiusKm: Number(values.serviceRadiusKm),
+            experienceYears: Number(values.experienceYears),
+            skills: values.skillsText.split(',').map(skill => skill.trim()).filter(Boolean),
+            workingHours: values.workingHours,
+            termsAccepted: values.terms === 'on',
+          }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || 'Registration failed.');
+        form.reset();
+        message.style.color = 'var(--success)';
+        message.textContent = result.message;
+      } catch (error) {
+        message.style.color = 'var(--danger)';
+        message.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

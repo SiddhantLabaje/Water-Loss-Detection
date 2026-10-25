@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Plumber portal — Smart Water Monitor</title><link rel="stylesheet" href="/shared.css">
+  <style>
+    .stack{display:grid;gap:12px}.record{padding:16px;background:#fff;border:1px solid var(--border);border-radius:8px}
+    .record h3{margin-bottom:6px}.record-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}
+    .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.proposal-form,.completion-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px;padding:14px;background:var(--surface-2);border-radius:8px}
+    .proposal-form label,.completion-form label{display:grid;gap:5px;font-weight:600}.proposal-form input,.proposal-form textarea,.completion-form input,.completion-form textarea{padding:9px;border:1px solid var(--border-2);border-radius:var(--radius);font:inherit}
+    .proposal-form textarea,.completion-form textarea{min-height:70px}.wide{grid-column:1/-1}.status-message{min-height:22px;margin-top:10px}
+    @media(max-width:650px){.proposal-form,.completion-form{grid-template-columns:1fr}.wide{grid-column:auto}}
+  </style>
+</head>
+<body>
+<aside class="sidebar">
+  <div class="sb-brand"><div class="sb-logo">💧</div><div><div class="sb-name">Smart Water</div><div class="sb-sub">Plumber portal</div></div></div>
+  <div class="sb-section-label">My workspace</div><nav><a class="active" href="plumber.html">Repair workspace</a><a href="index.html">Sensor dashboard</a></nav>
+  <div class="sb-footer"><span id="plumber-name"></span><button id="logout" class="btn btn-ghost" style="width:100%;margin-top:10px">Sign out</button></div>
+</aside>
+<main class="main">
+  <header class="topbar"><div class="topbar-left"><h1>Repair workspace</h1><p>Available repair requests, proposals and your assignments.</p></div><button id="refresh" class="btn">Refresh</button></header>
+  <div class="content">
+    <section id="pending" class="card" hidden><h2>Account awaiting approval</h2><p class="muted">Your email is verified. An administrator must approve your plumber profile before repair requests are available.</p></section>
+    <section id="workspace" hidden>
+      <section><div class="sec-header"><span class="sec-title">Available repair requests</span></div><div id="requests" class="stack"></div></section>
+      <section><div class="sec-header"><span class="sec-title">My proposals</span></div><div id="proposals" class="stack"></div></section>
+      <section><div class="sec-header"><span class="sec-title">My assignments</span></div><div id="assignments" class="stack"></div></section>
+    </section>
+    <p id="message" class="status-message" role="status" aria-live="polite"></p>
+  </div>
+</main>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+async function api(path,options={}){const response=await fetch('/api'+path,{credentials:'same-origin',...options,headers:{'Content-Type':'application/json',...(options.headers||{})}});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.message||`Request failed (${response.status})`);return data;}
+function showMessage(text,ok=false){$('message').textContent=text;$('message').style.color=ok?'var(--success)':'var(--danger)';}
+async function load(){
+  const {user}=await api('/auth/me');
+  if(user.role!=='plumber'){location.replace('/admin.html');return;}
+  $('plumber-name').textContent=user.name;
+  if(user.accountStatus==='pending'){ $('pending').hidden=false;$('workspace').hidden=true;return; }
+  $('pending').hidden=true;$('workspace').hidden=false;
+  const [requests,proposals,assignments]=await Promise.all([
+    api('/plumber/repair-requests'),api('/plumber/proposals'),api('/plumber/assignments'),
+  ]);
+  $('requests').innerHTML=requests.data.length?requests.data.map(item=>`<article class="record">
+    <div class="record-head"><div><h3>${esc(item.incidentId)} · ${esc(item.severity)} severity</h3><div class="muted small">Detected ${esc(item.sensorSnapshot?.detectedAt?new Date(item.sensorSnapshot.detectedAt).toLocaleString():'unknown')}</div></div><span class="badge">${esc(item.status)}</span></div>
+    <p>Flow ${esc(item.sensorSnapshot?.flowSensorData)} L/min · Pressure ${esc(item.sensorSnapshot?.pressureSensorData)} PSI · Estimated loss ${esc(item.sensorSnapshot?.waterLossRate)} L/hr</p>
+    <button class="btn btn-ghost" data-action="proposal-form" data-id="${esc(item._id)}">Prepare proposal</button>
+    <form class="proposal-form" data-incident="${esc(item._id)}" hidden>
+      <label class="wide">Repair method<textarea name="repairMethod" required minlength="5" maxlength="1000"></textarea></label>
+      <label>Labour charges<input name="labourCharges" type="number" min="0" step="0.01" required></label>
+      <label>Material charges<input name="materialCharges" type="number" min="0" step="0.01" required></label>
+      <label>Visit charges<input name="visitCharges" type="number" min="0" step="0.01" value="0"></label>
+      <label>Other charges<input name="otherCharges" type="number" min="0" step="0.01" value="0"></label>
+      <label>Estimated duration (hours)<input name="estimatedDurationHours" type="number" min="0.1" step="0.1" required></label>
+      <label>Earliest availability<input name="earliestAvailability" type="datetime-local" required></label>
+      <label class="wide">Warranty details<textarea name="warrantyDetails" maxlength="1000"></textarea></label>
+      <label class="wide">Additional notes<textarea name="notes" maxlength="2000"></textarea></label>
+      <button class="btn wide" type="submit">Submit repair estimate</button>
+    </form>
+  </article>`).join(''):'<div class="card empty-state">No repair requests are currently open.</div>';
+  $('proposals').innerHTML=proposals.length?proposals.map(item=>`<article class="record"><div class="record-head"><h3>${esc(item.incidentId?.incidentId||'Incident')}</h3><span class="badge">${esc(item.status)}</span></div><p>${esc(item.repairMethod)}</p><div>Total estimate: ${esc(item.totalEstimatedCharges)} · Submitted ${esc(new Date(item.createdAt).toLocaleString())}</div>${item.status==='submitted'?`<button class="btn btn-ghost" data-action="withdraw" data-id="${esc(item._id)}">Withdraw proposal</button>`:''}</article>`).join(''):'<div class="card empty-state">You have not submitted proposals.</div>';
+  $('assignments').innerHTML=assignments.length?assignments.map(item=>{
+    const incident=item.incidentId||{};
+    const next=item.status==='assigned'?'accepted':item.status==='accepted'?'in_progress':null;
+    return `<article class="record"><div class="record-head"><h3>${esc(incident.incidentId||'Incident')}</h3><span class="badge">${esc(item.status)}</span></div><p>Estimated amount: ${esc(item.selectedProposalId?.totalEstimatedCharges)} · Incident status: ${esc(incident.status)}</p>
+      ${next?`<button class="btn" data-action="assignment-status" data-id="${esc(item._id)}" data-status="${next}">${next==='accepted'?'Accept assignment':'Start repair'}</button>`:''}
+      ${item.status==='in_progress'?`<button class="btn btn-ghost" data-action="completion-form" data-id="${esc(item._id)}">Submit completion report</button>
+      <form class="completion-form" data-assignment="${esc(item._id)}" hidden>
+        <label class="wide">Work performed<textarea name="workDescription" required minlength="5" maxlength="5000"></textarea></label>
+        <label class="wide">Parts and materials used<textarea name="partsUsed" maxlength="2000"></textarea></label>
+        <label>Final labour charges<input name="labourCharges" type="number" min="0" step="0.01" required></label>
+        <label>Final material charges<input name="materialCharges" type="number" min="0" step="0.01" required></label>
+        <label class="wide">Completion notes<textarea name="completionNotes" maxlength="5000"></textarea></label>
+        <label class="wide"><span><input name="furtherWorkRequired" type="checkbox" value="true"> Further work is required</span></label>
+        <button class="btn wide" type="submit">Submit completion report</button>
+      </form>`:''}
+    </article>`;
+  }).join(''):'<div class="card empty-state">No assignments.</div>';
+}
+$('requests').addEventListener('click',event=>{const b=event.target.closest('[data-action="proposal-form"]');if(b){const form=document.querySelector(`form[data-incident="${CSS.escape(b.dataset.id)}"]`);form.hidden=!form.hidden;}});
+$('requests').addEventListener('submit',async event=>{
+  const form=event.target.closest('.proposal-form');if(!form)return;event.preventDefault();const button=form.querySelector('button');button.disabled=true;
+  try{const values=Object.fromEntries(new FormData(form));for(const key of ['labourCharges','materialCharges','visitCharges','otherCharges','estimatedDurationHours'])values[key]=Number(values[key]||0);values.earliestAvailability=new Date(values.earliestAvailability).toISOString();const result=await api(`/plumber/repair-requests/${form.dataset.incident}/proposals`,{method:'POST',body:JSON.stringify(values)});showMessage(`Proposal submitted. Total estimate: ${result.totalEstimatedCharges}.`,true);await load();}
+  catch(error){showMessage(error.message);}finally{button.disabled=false;}
+});
+$('proposals').addEventListener('click',async event=>{const b=event.target.closest('[data-action="withdraw"]');if(!b||!confirm('Withdraw this proposal?'))return;b.disabled=true;try{await api(`/plumber/proposals/${b.dataset.id}/withdraw`,{method:'POST',body:JSON.stringify({reason:'Withdrawn by plumber.'})});await load();}catch(error){showMessage(error.message);}finally{b.disabled=false;}});
+$('assignments').addEventListener('click',event=>{const b=event.target.closest('[data-action="completion-form"]');if(b){const form=document.querySelector(`form[data-assignment="${CSS.escape(b.dataset.id)}"]`);form.hidden=!form.hidden;}});
+$('assignments').addEventListener('click',async event=>{const b=event.target.closest('[data-action="assignment-status"]');if(!b)return;b.disabled=true;try{await api(`/plumber/assignments/${b.dataset.id}/status`,{method:'PATCH',body:JSON.stringify({status:b.dataset.status})});await load();}catch(error){showMessage(error.message);}finally{b.disabled=false;}});
+$('assignments').addEventListener('submit',async event=>{const form=event.target.closest('.completion-form');if(!form)return;event.preventDefault();const values=Object.fromEntries(new FormData(form));values.labourCharges=Number(values.labourCharges);values.materialCharges=Number(values.materialCharges);values.furtherWorkRequired=Boolean(form.elements.furtherWorkRequired.checked);const button=form.querySelector('button');button.disabled=true;try{const result=await api(`/plumber/assignments/${form.dataset.assignment}/completion-report`,{method:'POST',body:JSON.stringify(values)});showMessage(result.message,true);await load();}catch(error){showMessage(error.message);}finally{button.disabled=false;}});
+$('refresh').addEventListener('click',()=>load().catch(error=>showMessage(error.message)));
+$('logout').addEventListener('click',async()=>{await fetch('/api/auth/logout',{method:'POST',credentials:'same-origin'});location.replace('/login.html');});
+load().catch(error=>{if(error.message.includes('Authentication required')||error.message.includes('Invalid token'))location.replace('/login.html');else showMessage(error.message);});
+</script></body></html>

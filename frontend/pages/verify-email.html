@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Verify email — Smart Water Monitor</title><link rel="stylesheet" href="/shared.css">
+  <style>.box{width:min(480px,calc(100% - 32px));margin:12vh auto;padding:28px;background:#fff;border:1px solid var(--border);border-radius:10px}.box h1{margin-bottom:12px}.box p{color:var(--muted)}.msg{margin-top:18px}</style>
+</head>
+<body><main class="box"><h1>Email verification</h1><p id="message" class="msg" role="status" aria-live="polite">Verifying your email…</p><a href="login.html">Continue to sign in</a></main>
+<script>
+  const message = document.getElementById('message');
+  const token = new URLSearchParams(location.search).get('token');
+  if (!token) message.textContent = 'Verification token is missing.';
+  else fetch('/api/auth/verify-email', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }),
+  }).then(async response => {
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || 'Verification failed.');
+    message.textContent = result.message;
+  }).catch(error => { message.textContent = error.message; });
+</script></body></html>

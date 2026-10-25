@@ -8,8 +8,11 @@
 
 import MlPrediction    from '../models/mlPrediction.model.js';
 import DashboardAnalytics from '../models/dashboardAnalytics.model.js';
+import LeakEvent from '../models/leakEvent.model.js';
 import { broadcast, clientCount } from './sse.service.js';
 import { sendCriticalAlert } from './email.service.js';
+import { notifyLeakEvent, retryFailedNotifications } from './notification.service.js';
+import { randomBytes } from 'node:crypto';
 
 let lastSeenId        = null;   // _id of the last prediction we processed
 let lastSystemStatus  = null;
@@ -64,6 +67,71 @@ async function buildSnapshot() {
   return { latest, stats, alerts, history, analytics, serverTime: new Date().toISOString() };
 }
 
+async function createOrUpdateLeakEvent(prediction) {
+  const severity = String(prediction.mlSeverity || "").toUpperCase();
+  if (!["LOW", "MEDIUM", "HIGH"].includes(severity)) {
+    console.error(`[LEAK] Skipping prediction ${prediction._id}: severity is unavailable.`);
+    return;
+  }
+
+  let leak = await LeakEvent.findOne({ activeKey: "system-active" });
+  if (leak) {
+    leak.severity = ["LOW", "MEDIUM", "HIGH"].indexOf(severity) >
+      ["LOW", "MEDIUM", "HIGH"].indexOf(leak.severity) ? severity : leak.severity;
+    leak.predictionRef = prediction._id;
+    leak.lastProcessedPredictionId = prediction._id;
+    leak.sensorSnapshot = {
+      flowSensorData: prediction.flowSensorData,
+      pressureSensorData: prediction.pressureSensorData,
+      tankLevelSensorData: prediction.tankLevelSensorData,
+      turbiditySensorData: prediction.turbiditySensorData,
+      mlProbability: prediction.mlProbability,
+      mlSeverity: prediction.mlSeverity,
+      waterLossRate: prediction.waterLossRate,
+      overallSystemStatus: prediction.overallSystemStatus,
+      detectedAt: prediction.mlProcessedAt ? new Date(prediction.mlProcessedAt) : new Date(),
+    };
+    await leak.save();
+    notifyLeakEvent(leak).catch((err) => {
+      console.error(`[EMAIL] Leak notification preparation failed for ${leak.incidentId}: ${err.message}`);
+    });
+    return;
+  }
+
+  const now = new Date();
+  const incidentId = `WLD-${now.toISOString().slice(0, 10).replace(/-/g, "")}-${randomBytes(3).toString("hex").toUpperCase()}`;
+  try {
+    leak = await LeakEvent.create({
+      incidentId,
+      activeKey: "system-active",
+      predictionRef: prediction._id,
+      lastProcessedPredictionId: prediction._id,
+      severity,
+      status: "OPEN_FOR_PROPOSALS",
+      sensorSnapshot: {
+        flowSensorData: prediction.flowSensorData,
+        pressureSensorData: prediction.pressureSensorData,
+        tankLevelSensorData: prediction.tankLevelSensorData,
+        turbiditySensorData: prediction.turbiditySensorData,
+        mlProbability: prediction.mlProbability,
+        mlSeverity: prediction.mlSeverity,
+        waterLossRate: prediction.waterLossRate,
+        overallSystemStatus: prediction.overallSystemStatus,
+        detectedAt: prediction.mlProcessedAt ? new Date(prediction.mlProcessedAt) : now,
+      },
+      statusHistory: [{ status: "OPEN_FOR_PROPOSALS", reason: "Automatically created from a positive leak prediction." }],
+    });
+  } catch (err) {
+    if (err.code === 11000) return;
+    throw err;
+  }
+
+  console.log(`[LEAK] Created repair incident ${leak.incidentId} from prediction ${prediction._id}.`);
+  notifyLeakEvent(leak).catch((err) => {
+    console.error(`[EMAIL] Leak notification preparation failed for ${leak.incidentId}: ${err.message}`);
+  });
+}
+
 /**
  * Check for a new prediction and broadcast an SSE snapshot.
  */
@@ -72,39 +140,47 @@ async function tick() {
   tickInProgress = true;
 
   try {
-    const latest = await MlPrediction.findOne()
-      .sort({ _id: -1 })
-      .select('_id overallSystemStatus mlPredictionData mlProbability mlSeverity flowSensorData pressureSensorData tankLevelSensorData turbiditySensorData waterLossRate mlProcessedAt')
+    const predictions = await MlPrediction.find(
+      lastSeenId ? { _id: { $gt: lastSeenId } } : {}
+    )
+      .sort({ _id: 1 })
+      .limit(100)
       .lean();
-    if (!latest) return;
+    let foundNew = false;
 
-    const currentId    = latest._id.toString();
-    const isNew        = currentId !== lastSeenId;
-
-    if (isNew) {
-      lastSeenId = currentId;
+    for (const prediction of predictions) {
+      foundNew = true;
+      lastSeenId = prediction._id;
       const previousStatus = lastSystemStatus;
-      lastSystemStatus = latest.overallSystemStatus;
+      lastSystemStatus = prediction.overallSystemStatus;
 
-      if (latest.overallSystemStatus === 'CRITICAL' && previousStatus !== 'CRITICAL') {
+      if (prediction.mlPredictionData === 1) {
         try {
-          await sendCriticalAlert(latest);
+          await createOrUpdateLeakEvent(prediction);
         } catch (err) {
-          console.error(`[EMAIL] Failed to send critical alert: ${err.message}`);
+          console.error(`[LEAK] Incident processing failed for prediction ${prediction._id}: ${err.message}`);
         }
       }
 
-      if (clientCount() > 0) {
-        const snapshot = await buildSnapshot();
-        broadcast('snapshot', snapshot);
-        console.log(`[SSE] Broadcasted snapshot to ${clientCount()} client(s) — new prediction ${currentId}`);
+      if (prediction.overallSystemStatus === 'CRITICAL' && previousStatus !== 'CRITICAL') {
+        sendCriticalAlert(prediction).catch((err) => {
+          console.error(`[EMAIL] Failed to send owner critical alert: ${err.message}`);
+        });
       }
     }
+
+    if (foundNew && clientCount() > 0) {
+      const snapshot = await buildSnapshot();
+      broadcast('snapshot', snapshot);
+      console.log(`[SSE] Broadcasted snapshot to ${clientCount()} client(s) after processing new predictions.`);
+    }
+
   } catch (err) {
     console.error('[SSE] Broadcaster error:', err.message);
   } finally {
     tickInProgress = false;
   }
+
 }
 
 /**
@@ -124,14 +200,22 @@ export async function getInitialSnapshot() {
 export async function startBroadcaster() {
   const latest = await MlPrediction.findOne()
     .sort({ _id: -1 })
-    .select('_id overallSystemStatus')
+    .select('_id overallSystemStatus mlPredictionData mlProbability mlSeverity flowSensorData pressureSensorData tankLevelSensorData turbiditySensorData waterLossRate mlProcessedAt')
     .lean();
 
   if (latest) {
     lastSeenId = latest._id.toString();
     lastSystemStatus = latest.overallSystemStatus;
+    if (latest.mlPredictionData === 1) {
+      await createOrUpdateLeakEvent(latest);
+    }
   }
 
   setInterval(tick, 5000);
+  setInterval(() => {
+    retryFailedNotifications().catch((err) => {
+      console.error("[EMAIL] Failed notification retry cycle:", err.message);
+    });
+  }, 60_000);
   console.log('SSE broadcaster started — polling every 5 seconds.');
 }

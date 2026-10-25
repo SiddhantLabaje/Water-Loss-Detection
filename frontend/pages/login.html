@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in — Smart Water Monitor</title>
+  <link rel="stylesheet" href="/shared.css">
+  <style>
+    .auth-wrap { width:min(460px,calc(100% - 32px)); margin:8vh auto; }
+    .auth-card { background:#fff; padding:28px; border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow); }
+    .auth-card h1 { font-size:24px; margin-bottom:6px; }
+    .auth-card p { color:var(--muted); margin-bottom:20px; }
+    .auth-form { display:grid; gap:14px; }
+    .auth-form label { display:grid; gap:6px; font-weight:600; }
+    .auth-form input { width:100%; padding:10px 12px; border:1px solid var(--border-2); border-radius:var(--radius); font:inherit; }
+    .auth-form input:focus { outline:2px solid var(--primary); outline-offset:1px; }
+    .auth-form .btn { justify-content:center; }
+    .auth-message { min-height:22px; margin-top:12px; color:var(--danger); }
+    .auth-links { display:flex; justify-content:space-between; gap:10px; margin-top:18px; flex-wrap:wrap; }
+  </style>
+</head>
+<body>
+  <main class="auth-wrap">
+    <section class="auth-card">
+      <h1>Welcome back</h1>
+      <p>Sign in to the Smart Water Monitor portal.</p>
+      <form id="login-form" class="auth-form">
+        <label>Email address<input name="email" type="email" autocomplete="username" required maxlength="254"></label>
+        <label>Password<input name="password" type="password" autocomplete="current-password" required maxlength="128"></label>
+        <button id="submit-button" class="btn" type="submit">Sign in</button>
+      </form>
+      <div id="message" class="auth-message" role="status" aria-live="polite"></div>
+      <div class="auth-links">
+        <a href="plumber-register.html">Register as a plumber</a>
+        <a href="reset-password.html">Forgot password?</a>
+      </div>
+    </section>
+  </main>
+  <script>
+    const form = document.getElementById('login-form');
+    const message = document.getElementById('message');
+    async function redirectIfSignedIn() {
+      const response = await fetch('/api/auth/me', { credentials: 'same-origin' });
+      if (!response.ok) return;
+      const { user } = await response.json();
+      location.replace(user.role === 'admin' ? '/admin.html' : '/plumber.html');
+    }
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const button = document.getElementById('submit-button');
+      button.disabled = true;
+      message.textContent = 'Signing in...';
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(Object.fromEntries(new FormData(form))),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || 'Sign in failed.');
+        location.replace(result.user.role === 'admin' ? '/admin.html' : '/plumber.html');
+      } catch (error) {
+        message.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    });
+    redirectIfSignedIn().catch(() => {});
+  </script>
+</body>
+</html>

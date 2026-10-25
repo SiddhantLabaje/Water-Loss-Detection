@@ -14,14 +14,16 @@ services:
           name: smart-water-monitor
           property: host
       - key: MONGO_URI
-        value: mongodb+srv://WLD:siddhant@wld.bh8jlfh.mongodb.net/water_loss_detection?retryWrites=true&w=majority
+        sync: false
       - key: CHANNEL_ID
         value: "3445219"
       - key: READ_API_KEY
-        value: 6PILE5SJIDU76BGD
+        sync: false
       - key: EMAIL_USER
         sync: false
       - key: EMAIL_PASS
+        sync: false
+      - key: JWT_SECRET
         sync: false
   - type: worker
     name: water-loss-ml-pipeline

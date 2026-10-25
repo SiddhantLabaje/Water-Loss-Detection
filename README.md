@@ -70,9 +70,11 @@
 
 ```bash
 cd backend
-node server.js
+npm start
 # Server running on http://localhost:5000
 ```
+
+Configure `backend/.env` first using the secure setup below; the backend will not start without a strong `JWT_SECRET`.
 
 ### 2 — Start the Python ML pipeline
 
@@ -92,8 +94,7 @@ The Render blueprint deploys the ML pipeline as a background worker. It uses the
 
 ### 3 — Open the dashboard
 
-Open `frontend/pages/index.html` directly in your browser.  
-It auto-refreshes every 10 seconds.
+Open `http://localhost:5000/` after starting the backend. This serves the dashboard and the role-specific login and registration pages.
 
 ---
 
@@ -152,6 +153,36 @@ PREDICTION_INTERVAL_SECONDS=10
 > Alerts page. The system emails the owner when a new prediction transitions
 > the system into CRITICAL status; it does not email for WARNING or repeated
 > predictions that remain CRITICAL.
+
+## Admin and plumber operations
+
+The backend also supports a role-protected operations workflow:
+
+- `POST /api/auth/register` creates a pending plumber account and profile.
+- `POST /api/auth/login`, `POST /api/auth/logout`, and `GET /api/auth/me` manage sessions.
+- Admin operations are under `/api/admin`; plumber operations are under `/api/plumber`.
+- A positive leak prediction creates a deduplicated open repair incident.
+- Approved plumbers can submit costed proposals; admins assign/reassign through transaction-protected endpoints.
+- A plumber completion report does not mark the incident recovered. Admin verification requires a configurable number of fresh, consecutive normal ML predictions after completion.
+
+### Local setup
+
+1. Copy `backend/.env.example` to `backend/.env` and set MongoDB, SMTP and a newly generated `JWT_SECRET` (at least 32 characters). Never commit `.env`.
+2. Install dependencies with `cd backend; npm install`.
+3. Create the initial administrator once: set `ADMIN_NAME`, `ADMIN_EMAIL`, and a unique `ADMIN_PASSWORD` in the environment, then run `npm run bootstrap-admin`. Do not use a default password; remove the bootstrap password afterward.
+4. Ensure indexes exist with `npm run create-indexes`. This creates schema indexes but does not drop existing indexes.
+5. Start the backend with `npm start`. The existing Python prediction worker remains a separate process.
+6. Visit `/login.html` to sign in, or `/plumber-register.html` to register a plumber. Plumber registration requires working SMTP for email verification and an administrator's approval.
+
+The Render blueprint deliberately leaves `MONGO_URI`, `READ_API_KEY`, SMTP credentials and `JWT_SECRET` as protected service variables. Set them in the Render dashboard before deploying. The Python worker receives the web service's `MONGO_URI` through a Render service reference. MongoDB transactions used by assignment and completion workflows require an Atlas replica set or another MongoDB deployment that supports transactions.
+
+Set `WEB_ORIGINS` to a comma-separated list of additional frontend origins when hosting the browser UI on another domain. If `APP_URL` is set, it is used as the base for emailed links; otherwise Render's service host is normalized to HTTPS automatically.
+
+`RECOVERY_REQUIRED_READINGS` defaults to 3 and `RECOVERY_MAX_AGE_MINUTES` defaults to 5. Recovery uses only the existing ML pipeline's `NORMAL` status and non-leak prediction plus complete, fresh sensor fields; it does not invent physical thresholds. These settings must be chosen for the installation's reading cadence.
+
+Run backend unit tests with `cd backend; npm test`. Database-backed end-to-end tests require a non-production test database and are not run as part of this setup.
+
+This implements the authentication and repair workflow foundation, not every item in the larger product specification. Evidence/file uploads, advanced dashboard visualizations, notification preference/history screens, and comprehensive database-backed integration testing still need implementation.
 
 ---
 

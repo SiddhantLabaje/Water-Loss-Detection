@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Accept plumber invitation — Smart Water Monitor</title><link rel="stylesheet" href="/shared.css">
+  <style>.box{width:min(480px,calc(100% - 32px));margin:10vh auto;padding:28px;background:#fff;border:1px solid var(--border);border-radius:10px}.box h1{margin-bottom:8px}form{display:grid;gap:12px;margin-top:18px}label{display:grid;gap:6px;font-weight:600}input{padding:10px;border:1px solid var(--border-2);border-radius:var(--radius);font:inherit}.msg{min-height:24px;margin-top:12px}</style>
+</head>
+<body><main class="box"><h1>Activate plumber account</h1><p>Choose a password to accept your administrator invitation.</p>
+<form id="form"><label>Password (12+ characters)<input name="password" type="password" minlength="12" maxlength="128" required autocomplete="new-password"></label><button class="btn" type="submit">Activate account</button></form>
+<div id="message" class="msg" role="status" aria-live="polite"></div><a href="login.html">Sign in</a></main>
+<script>
+  const token = new URLSearchParams(location.search).get('token');
+  const form = document.getElementById('form');
+  const message = document.getElementById('message');
+  if (!token) {
+    form.hidden = true;
+    message.textContent = 'Invitation token is missing.';
+  }
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const button = form.querySelector('button');
+    button.disabled = true;
+    message.textContent = 'Activating account…';
+    try {
+      const response = await fetch('/api/auth/accept-invite', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, ...Object.fromEntries(new FormData(form)) }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message || 'Unable to activate account.');
+      message.textContent = result.message;
+      message.style.color = 'var(--success)';
+      form.hidden = true;
+    } catch (error) {
+      message.textContent = error.message;
+      message.style.color = 'var(--danger)';
+    } finally { button.disabled = false; }
+  });
+</script></body></html>
