@@ -2,247 +2,575 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Admin operations — Smart Water Monitor</title><link rel="stylesheet" href="/shared.css">
+  <title>Admin — Smart Water Monitor</title>
+  <link rel="stylesheet" href="/shared.css">
   <style>
-    .toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
-    .stack{display:grid;gap:12px}.record{padding:16px;background:#fff;border:1px solid var(--border);border-radius:8px}
-    .record-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
-    .record h3{margin-bottom:5px}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-    .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-    .form-grid label{display:grid;gap:5px;font-weight:600}.form-grid input,.form-grid select{padding:9px;border:1px solid var(--border-2);border-radius:var(--radius);font:inherit}
-    .wide{grid-column:1/-1}.status-message{min-height:22px;margin-top:10px}.metric-sub{font-size:12px;color:var(--muted)}
-    @media(max-width:650px){.form-grid{grid-template-columns:1fr}.wide{grid-column:auto}}
+    /* ── page-level layout ── */
+    .stack{display:grid;gap:12px}
+    .wide{grid-column:1/-1}
+    .metric-sub{font-size:12px;color:var(--muted)}
+    .status-message{min-height:22px;margin-top:10px;font-size:13px}
+    /* ── alert banner ── */
+    .alert-banner{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:18px 22px;border-radius:8px;border:1.5px solid var(--danger-bd);background:var(--danger-bg)}
+    .alert-banner h3{color:var(--danger);font-size:15px;margin-bottom:3px}
+    .alert-banner p{color:#7f1d1d;font-size:13px;margin:0}
+    /* ── incident card ── */
+    .incident-card{background:#fff;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+    .incident-card.is-open{border-left:4px solid var(--danger)}
+    .incident-card.is-warning{border-left:4px solid var(--warning)}
+    .ic-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:16px 18px 12px;flex-wrap:wrap}
+    .ic-title{font-size:15px;font-weight:700;margin-bottom:4px}
+    .ic-meta{font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:12px}
+    .ic-meta span{display:flex;align-items:center;gap:4px}
+    .ic-sensors{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:0 18px 14px}
+    .sensor-box{background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;text-align:center}
+    .sensor-box .sb-val{font-size:18px;font-weight:700;color:var(--text)}
+    .sensor-box .sb-unit{font-size:10px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.04em}
+    .ic-actions{display:flex;gap:8px;flex-wrap:wrap;padding:10px 18px 14px;border-top:1px solid var(--border);background:var(--surface-2)}
+    /* ── proposals panel ── */
+    .proposals-panel{border-top:2px solid var(--border);background:#fff}
+    .pp-title{padding:12px 18px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border-bottom:1px solid var(--border)}
+    .proposal-row{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:14px 18px;border-bottom:1px solid var(--border)}
+    .proposal-row:last-child{border-bottom:none}
+    .pr-name{font-weight:700;font-size:14px;margin-bottom:3px}
+    .pr-method{font-size:13px;color:var(--text-2);margin-bottom:6px}
+    .pr-costs{display:flex;flex-wrap:wrap;gap:10px 20px;font-size:12px;color:var(--muted)}
+    .pr-costs strong{color:var(--text);font-weight:700}
+    .pr-total{font-size:16px;font-weight:800;color:var(--success);white-space:nowrap}
+    .pr-best{font-size:10px;color:var(--success);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+    .pr-assign-col{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+    /* ── form grid ── */
+    .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:16px 18px}
+    .form-grid label{display:grid;gap:5px;font-size:13px;font-weight:600}
+    .form-grid input,.form-grid select{padding:8px 10px;border:1px solid var(--border-2);border-radius:var(--radius);font:inherit}
+    /* ── plumber card ── */
+    .plumber-card{background:#fff;border:1px solid var(--border);border-radius:8px;padding:16px 18px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+    .pc-info h3{font-size:14px;font-weight:700;margin-bottom:4px}
+    .pc-info p{font-size:12px;color:var(--muted)}
+    .pc-actions{display:flex;gap:8px;align-items:center}
+    /* ── assignment card ── */
+    .assign-card{background:#fff;border:1px solid var(--border);border-radius:8px;padding:16px 18px}
+    .ac-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px}
+    .ac-head strong{font-size:14px}
+    /* ── step pills ── */
+    .workflow-steps{display:flex;gap:0;margin-bottom:16px;border-radius:8px;overflow:hidden;border:1px solid var(--border)}
+    .step{flex:1;padding:10px 8px;text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:var(--surface-2);color:var(--muted);border-right:1px solid var(--border)}
+    .step:last-child{border-right:none}
+    .step.active{background:var(--primary);color:#fff}
+    .step.done{background:var(--success-bg);color:var(--success)}
+    /* ── badge ── */
+    .sev-HIGH{color:var(--danger);font-weight:700}
+    .sev-MEDIUM{color:var(--warning);font-weight:700}
+    .sev-LOW{color:var(--success);font-weight:700}
+    @media(max-width:800px){.ic-sensors{grid-template-columns:repeat(2,1fr)}.form-grid{grid-template-columns:1fr}.wide{grid-column:auto}}
+    @media(max-width:600px){.proposal-row{grid-template-columns:1fr}.pr-assign-col{align-items:flex-start}}
   </style>
 </head>
 <body>
 <aside class="sidebar">
   <div class="sb-brand"><div class="sb-logo">💧</div><div><div class="sb-name">Smart Water</div><div class="sb-sub">Admin portal</div></div></div>
   <div class="sb-section-label">Operations</div>
-  <nav><a class="active" href="admin.html">Admin overview</a><a href="index.html">Sensor dashboard</a><a href="alerts.html">Alerts</a></nav>
-  <div class="sb-footer"><span id="admin-name"></span><button id="logout" class="btn btn-ghost" style="width:100%;margin-top:10px">Sign out</button></div>
+  <nav>
+    <a class="active" href="admin.html">Admin overview</a>
+    <a href="index.html">Sensor dashboard</a>
+    <a href="alerts.html">Alerts</a>
+  </nav>
+  <div class="sb-footer"><span id="admin-name" style="font-size:12px;color:var(--sb-text)"></span><button id="logout" class="btn btn-ghost" style="width:100%;margin-top:10px;color:#fff;border-color:#444">Sign out</button></div>
 </aside>
-<main class="main">
-  <header class="topbar"><div class="topbar-left"><h1>Administration</h1><p>Manage plumbers, leak incidents, proposals and email alerts.</p></div><button id="refresh" class="btn">Refresh</button></header>
-  <div class="content">
-    <section><div class="sec-header"><span class="sec-title">System overview</span></div><div id="metrics" class="g3"><div class="card loading">Loading overview…</div></div><p id="sensor-status" class="metric-sub" style="margin-top:10px"></p></section>
 
-    <!-- ── Critical alert banner — shown when open leaks exist ── -->
+<main class="main">
+  <header class="topbar">
+    <div class="topbar-left"><h1>Administration</h1><p>Leak incidents · Plumber management · Assignments</p></div>
+    <button id="refresh" class="btn">↻ Refresh</button>
+  </header>
+
+  <div class="content">
+
+    <!-- ── KPI metrics ── -->
+    <section>
+      <div class="sec-header"><span class="sec-title">System overview</span><span id="sensor-status" class="metric-sub"></span></div>
+      <div id="metrics" class="g4"><div class="card loading">Loading…</div></div>
+    </section>
+
+    <!-- ── STEP 1: Critical alert banner ── -->
     <section id="critical-banner" hidden>
-      <div class="card" style="border-left:4px solid var(--danger,#dc2626);background:#fef2f2;">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-          <div>
-            <strong style="color:var(--danger,#dc2626)">🚨 Active leak incidents require attention</strong>
-            <p class="muted" style="margin-top:4px;margin-bottom:0" id="critical-banner-text"></p>
-          </div>
-          <button class="btn" onclick="document.getElementById('leak-filter').value='OPEN_FOR_PROPOSALS';loadLeaks().then(()=>document.getElementById('leaks').scrollIntoView({behavior:'smooth'}))">
-            View &amp; assign plumbers →
-          </button>
+      <div class="alert-banner">
+        <div>
+          <h3>🚨 Leak detected — action required</h3>
+          <p id="critical-banner-text"></p>
         </div>
+        <button class="btn" style="background:var(--danger);flex-shrink:0"
+          onclick="document.getElementById('leak-filter').value='OPEN_FOR_PROPOSALS';loadLeaks();setTimeout(()=>document.getElementById('leaks-section').scrollIntoView({behavior:'smooth'}),100)">
+          View incidents &amp; assign plumbers →
+        </button>
       </div>
     </section>
-    <section><div class="sec-header"><span class="sec-title">Critical email recipient</span></div><div class="card">
-      <p class="muted" style="margin-bottom:12px">Owner notification address. SMTP credentials must also be configured on the server.</p>
-      <form id="owner-form" class="form-grid"><label>Owner name<input name="ownerName" required maxlength="100"></label><label>Owner email<input name="ownerEmail" type="email" required maxlength="254"></label><button class="btn wide" type="submit">Save notification recipient</button></form>
-      <p id="owner-message" class="status-message small" role="status"></p>
-    </div></section>
-    <section><div class="sec-header"><span class="sec-title">Invite trusted plumber</span></div><div class="card">
-      <form id="invite-form" class="form-grid">
-        <label>Name<input name="name" required minlength="2" maxlength="100"></label><label>Email<input name="email" type="email" required maxlength="254"></label>
-        <label>Phone<input name="phone" required minlength="7" maxlength="30"></label><label>Business name<input name="businessName" maxlength="120"></label>
-        <label>Address<input name="address" required minlength="3" maxlength="200"></label><label>City<input name="city" required minlength="2" maxlength="100"></label>
-        <label>State / region<input name="state" required minlength="2" maxlength="100"></label><label>Service radius (km)<input name="serviceRadiusKm" type="number" min="1" max="500" value="25" required></label>
-        <label>Experience (years)<input name="experienceYears" type="number" min="0" max="80" value="0" required></label>
-        <label>Skills (comma separated)<input name="skillsText" required placeholder="Leak repair, pipe fitting"></label>
-        <label class="wide">Working hours<input name="workingHours" maxlength="200"></label>
-        <button class="btn wide" type="submit">Create invitation</button>
-      </form><p id="invite-message" class="status-message small" role="status"></p>
-    </div></section>
-    <section><div class="sec-header"><span class="sec-title">Plumber approvals</span><select id="plumber-filter" aria-label="Filter plumbers"><option value="pending">Pending approval</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="suspended">Suspended</option></select></div><div id="plumbers" class="stack"><div class="card loading">Loading plumbers…</div></div></section>
-    <section><div class="sec-header"><span class="sec-title">Leak incidents and proposals</span><select id="leak-filter" aria-label="Filter leak incidents"><option value="OPEN_FOR_PROPOSALS">Open for proposals</option><option value="">All incidents</option><option>ASSIGNED</option><option>REPAIR_IN_PROGRESS</option><option>VERIFYING_RECOVERY</option><option>RECOVERED</option><option>DETECTED</option></select></div><div id="leaks" class="stack"><div class="card loading">Loading incidents…</div></div></section>
-    <section><div class="sec-header"><span class="sec-title">Active assignments</span></div><div id="assignments" class="stack"></div></section>
-    <section><div class="sec-header"><span class="sec-title">Audit activity</span></div><div id="audit-logs" class="stack"></div></section>
+
+    <!-- ── STEP 2: Leak incidents ── -->
+    <section id="leaks-section">
+      <div class="sec-header">
+        <span class="sec-title">Leak incidents</span>
+        <select id="leak-filter" aria-label="Filter incidents">
+          <option value="OPEN_FOR_PROPOSALS">Open for proposals</option>
+          <option value="">All incidents</option>
+          <option value="ASSIGNED">Assigned</option>
+          <option value="REPAIR_IN_PROGRESS">In progress</option>
+          <option value="VERIFYING_RECOVERY">Verifying recovery</option>
+          <option value="RECOVERED">Recovered</option>
+          <option value="DETECTED">Detected</option>
+        </select>
+      </div>
+      <div id="leaks" class="stack"><div class="card loading">Loading incidents…</div></div>
+    </section>
+
+    <!-- ── STEP 3: Active assignments ── -->
+    <section>
+      <div class="sec-header"><span class="sec-title">Active assignments</span></div>
+      <div id="assignments" class="stack"><div class="card loading">Loading…</div></div>
+    </section>
+
+    <!-- ── Plumber management ── -->
+    <section>
+      <div class="sec-header">
+        <span class="sec-title">Plumber approvals</span>
+        <select id="plumber-filter" aria-label="Filter plumbers">
+          <option value="pending">Pending approval</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+          <option value="suspended">Suspended</option>
+        </select>
+      </div>
+      <div id="plumbers" class="stack"><div class="card loading">Loading plumbers…</div></div>
+    </section>
+
+    <!-- ── Invite plumber ── -->
+    <section>
+      <div class="sec-header"><span class="sec-title">Invite trusted plumber</span></div>
+      <div class="card">
+        <form id="invite-form" class="form-grid">
+          <label>Name<input name="name" required minlength="2" maxlength="100"></label>
+          <label>Email<input name="email" type="email" required maxlength="254"></label>
+          <label>Phone<input name="phone" required minlength="7" maxlength="30"></label>
+          <label>City<input name="city" required maxlength="100"></label>
+          <label>State / region<input name="state" required maxlength="100"></label>
+          <label>Service radius (km)<input name="serviceRadiusKm" type="number" min="1" max="500" value="25" required></label>
+          <label>Experience (years)<input name="experienceYears" type="number" min="0" max="80" value="0"></label>
+          <label>Skills (comma separated)<input name="skillsText" placeholder="Leak repair, pipe fitting"></label>
+          <label class="wide">Address<input name="address" maxlength="200"></label>
+          <button class="btn wide" type="submit">Send invitation</button>
+        </form>
+        <p id="invite-message" class="status-message" style="padding:0 18px"></p>
+      </div>
+    </section>
+
+    <!-- ── Critical email recipient ── -->
+    <section>
+      <div class="sec-header"><span class="sec-title">Critical alert email recipient</span></div>
+      <div class="card">
+        <p class="muted" style="margin-bottom:14px;font-size:13px">This address receives critical leak alerts via email.</p>
+        <form id="owner-form" class="form-grid">
+          <label>Owner name<input name="ownerName" required maxlength="100"></label>
+          <label>Owner email<input name="ownerEmail" type="email" required maxlength="254"></label>
+          <button class="btn wide" type="submit">Save</button>
+        </form>
+        <p id="owner-message" class="status-message" style="padding:0 18px"></p>
+      </div>
+    </section>
+
+    <!-- ── Audit log ── -->
+    <section>
+      <div class="sec-header"><span class="sec-title">Recent activity</span></div>
+      <div id="audit-logs" class="stack"><div class="card loading">Loading…</div></div>
+    </section>
+
     <p id="page-message" class="status-message" role="status" aria-live="polite"></p>
   </div>
 </main>
+
 <script src="/stream.js"></script>
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
-const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-async function api(path, options={}) {
-  const response = await fetch('/api' + path, { credentials:'same-origin', ...options, headers:{'Content-Type':'application/json', ...(options.headers||{})} });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || `Request failed (${response.status})`);
-  return data;
-}
-function message(id, text, ok=false) { $(id).textContent=text; $(id).style.color=ok?'var(--success)':'var(--danger)'; }
-function button(text, action, value) { return `<button class="btn btn-ghost" data-action="${action}" data-id="${esc(value)}">${esc(text)}</button>`; }
+const esc = v => String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
+async function api(path, opts={}) {
+  const r = await fetch('/api'+path, {credentials:'same-origin',...opts,headers:{'Content-Type':'application/json',...(opts.headers||{})}});
+  const d = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(d.message||`Error ${r.status}`);
+  return d;
+}
+function msg(id, text, ok=false){ $(id).textContent=text; $(id).style.color=ok?'var(--success)':'var(--danger)'; }
+
+/* ── user ── */
 async function loadUser() {
-  const result=await api('/auth/me');
-  if(result.user.role!=='admin') { location.replace('/plumber.html'); return false; }
-  $('admin-name').textContent=result.user.name;
+  const {user} = await api('/auth/me');
+  if(user.role!=='admin'){location.replace('/plumber.html');return false;}
+  $('admin-name').textContent = user.name;
   return true;
 }
+
+/* ── dashboard metrics ── */
 async function loadDashboard() {
-  const data=await api('/admin/dashboard');
-  const counts=data.counts;
-  const cards=[
-    ['Sensors monitored',counts.sensors],['Leak incidents',counts.leakIncidents],
-    ['Pending plumbers',counts.pendingPlumbers],['Submitted proposals',counts.submittedProposals],
-    ['Active assignments',counts.activeAssignments],['Awaiting verification',counts.repairsAwaitingVerification],
-    ['Recovered incidents',counts.recoveredIncidents],
+  const data = await api('/admin/dashboard');
+  const c = data.counts || {};
+  const colors = ['kpi-blue','kpi-red','kpi-amber','kpi-teal','kpi-violet','kpi-amber','kpi-green'];
+  const cards = [
+    ['Sensors','Total sensors monitored', c.sensors],
+    ['Leaks','Total leak incidents', c.leakIncidents],
+    ['Pending plumbers','Awaiting your approval', c.pendingPlumbers],
+    ['Open proposals','Submitted by plumbers', c.submittedProposals],
+    ['Active assignments','Currently in progress', c.activeAssignments],
+    ['Awaiting verification','Recovery checks needed', c.repairsAwaitingVerification],
+    ['Recovered','Successfully resolved', c.recoveredIncidents],
   ];
-  $('metrics').innerHTML=cards.map(([label,value])=>`<div class="kpi-card"><div class="kpi-label">${esc(label)}</div><div class="kpi-value">${esc(value??'—')}</div></div>`).join('');
-  const prediction=data.latestPrediction;
-  $('sensor-status').textContent=`Last prediction: ${prediction?.mlProcessedAt ? new Date(prediction.mlProcessedAt).toLocaleString() : 'not available'} · Current status: ${prediction?.overallSystemStatus || 'UNKNOWN'}`;
+  $('metrics').innerHTML = cards.map(([label,sub,value],i)=>`
+    <div class="kpi-card ${colors[i]}">
+      <div class="kpi-label">${esc(label)}</div>
+      <div class="kpi-value">${esc(value??'—')}</div>
+      <div class="kpi-unit">${esc(sub)}</div>
+    </div>`).join('');
 
-  // Show critical banner if any leaks are open for proposals
-  const openCount = data.leaks?.openForProposals || 0;
-  const criticalBanner = $('critical-banner');
-  if (openCount > 0) {
-    criticalBanner.hidden = false;
-    $('critical-banner-text').textContent = `${openCount} incident${openCount>1?'s are':' is'} open for proposals — assign a plumber to begin repair.`;
-  } else {
-    criticalBanner.hidden = true;
-  }
+  const p = data.latestPrediction;
+  $('sensor-status').textContent = p
+    ? `Last prediction: ${new Date(p.mlProcessedAt).toLocaleString()} · Status: ${p.overallSystemStatus}`
+    : 'No predictions yet';
+
+  const open = data.leaks?.openForProposals || 0;
+  $('critical-banner').hidden = open === 0;
+  if(open > 0)
+    $('critical-banner-text').textContent =
+      `${open} incident${open>1?'s are':' is'} open for proposals. Review the sensor data below and assign a plumber to start the repair.`;
 }
-async function loadRecipient() {
-  const response=await fetch('/api/notifications/settings',{credentials:'same-origin'});
-  if(response.status===404)return;
-  const settings=await response.json();
-  if(!response.ok)throw new Error(settings.message||'Unable to load recipient settings.');
-  $('owner-form').elements.ownerName.value=settings.ownerName||'';
-  $('owner-form').elements.ownerEmail.value=settings.ownerEmail||'';
+
+/* ── leak incidents ── */
+function sevColor(s){ return s==='HIGH'?'var(--danger)':s==='MEDIUM'?'var(--warning)':'var(--success)'; }
+function statusBadge(s){
+  const map={OPEN_FOR_PROPOSALS:'b-amber',ASSIGNED:'b-blue',REPAIR_IN_PROGRESS:'b-blue',
+             VERIFYING_RECOVERY:'b-amber',RECOVERED:'b-green',DETECTED:'b-grey',CANCELLED:'b-grey'};
+  return `<span class="badge ${map[s]||'b-grey'}">${esc(s.replace(/_/g,' '))}</span>`;
 }
-async function loadPlumbers() {
-  const result=await api(`/admin/plumbers?status=${encodeURIComponent($('plumber-filter').value)}`);
-  const profiles=result.data||result;
-  $('plumbers').innerHTML=profiles.length?profiles.map(profile=>{
-    const user=profile.userId||{};
-    const actions=profile.approvalStatus==='pending'
-      ? button('Approve','approve',profile._id)+button('Reject','reject',profile._id)
-      : profile.approvalStatus==='approved'
-        ? button('Suspend','suspend',profile._id)
-        : profile.approvalStatus==='suspended' ? button('Reactivate','reactivate',profile._id):'';
-    return `<article class="record"><div class="record-head"><div><h3>${esc(user.name)}</h3><div>${esc(user.email)} · ${esc(profile.phone)}</div><div class="metric-sub">${esc(profile.city)}, ${esc(profile.state)} · ${esc(profile.experienceYears)} years · ${esc((profile.skills||[]).join(', '))}</div></div><span class="badge">${esc(profile.approvalStatus)}</span></div><div class="actions">${actions}</div></article>`;
-  }).join(''):'<div class="card empty-state">No plumbers in this status.</div>';
-}
+
 async function loadLeaks() {
-  const status=$('leak-filter').value;
-  const result=await api(`/admin/leaks?limit=100${status?'&status='+encodeURIComponent(status):''}`);
-  const leaks=result.data||result;
-  $('leaks').innerHTML=leaks.length?leaks.map(leak=>{
-    const isOpen=leak.status==='OPEN_FOR_PROPOSALS';
-    const isCritical=leak.severity==='HIGH'||leak.overallSystemStatus==='CRITICAL';
-    const borderStyle=isOpen&&isCritical?'border-left:4px solid var(--danger,#dc2626)':isOpen?'border-left:4px solid #f59e0b':'';
-    return `<article class="record" style="${borderStyle}">
-    <div class="record-head"><div>
-      <h3>${esc(leak.incidentId)} · <span style="color:${leak.severity==='HIGH'?'var(--danger,#dc2626)':leak.severity==='MEDIUM'?'#f59e0b':'var(--muted)'}">${esc(leak.severity)}</span> severity</h3>
-      <div class="metric-sub">Detected ${esc(leak.sensorSnapshot?.detectedAt ? new Date(leak.sensorSnapshot.detectedAt).toLocaleString() : 'unknown')}</div>
-      <div>Flow <strong>${esc(leak.sensorSnapshot?.flowSensorData)}</strong> L/min · Pressure <strong>${esc(leak.sensorSnapshot?.pressureSensorData)}</strong> PSI · Water loss <strong>${esc(leak.sensorSnapshot?.waterLossRate)}</strong> L/hr</div>
-    </div>
-    <span class="badge" style="${isOpen?'background:#fef3c7;color:#92400e;':''}">${esc(leak.status)}</span></div>
-    <div class="actions">
-      ${leak.status==='DETECTED'?button('Open for proposals','open',leak._id):''}
-      ${isOpen?`<button class="btn" data-action="proposals" data-id="${esc(leak._id)}" style="background:var(--primary);color:#fff">🔧 Compare proposals &amp; assign plumber</button>`:''}
-      ${leak.status==='VERIFYING_RECOVERY'?button('Verify recovery','verify',leak._id):''}
-      ${leak.status==='RECOVERY_FAILED'?button('Retry recovery check','retry-verification',leak._id):''}
-      ${isOpen?button('Cancel incident','cancel',leak._id):''}
-    </div>
-    <div id="proposal-${esc(leak._id)}"></div></article>`;
-  }).join(''):'<div class="card empty-state">No incidents found.</div>';
+  const status = $('leak-filter').value;
+  const result = await api(`/admin/leaks?limit=100${status?'&status='+encodeURIComponent(status):''}`);
+  const leaks = result.data || [];
+
+  if(!leaks.length){
+    $('leaks').innerHTML='<div class="card empty-state">No incidents found for this filter.</div>';
+    return;
+  }
+
+  $('leaks').innerHTML = leaks.map(leak => {
+    const isOpen = leak.status==='OPEN_FOR_PROPOSALS';
+    const sev = (leak.severity||'').toUpperCase();
+    const cardClass = isOpen&&sev==='HIGH'?'is-open':isOpen?'is-warning':'';
+    const ss = leak.sensorSnapshot || {};
+    const det = ss.detectedAt ? new Date(ss.detectedAt).toLocaleString() : 'Unknown';
+
+    return `
+    <div class="incident-card ${cardClass}">
+      <div class="ic-head">
+        <div>
+          <div class="ic-title">
+            ${esc(leak.incidentId)}
+            &nbsp;<span style="color:${sevColor(sev)};font-size:13px">${esc(sev)} severity</span>
+          </div>
+          <div class="ic-meta">
+            <span>🕐 Detected: ${esc(det)}</span>
+            <span>📍 ${statusBadge(leak.status)}</span>
+          </div>
+        </div>
+        <div style="text-align:right">
+          ${isOpen?`<div style="font-size:11px;font-weight:700;color:var(--danger);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">⚠ Needs plumber assignment</div>`:''}
+          ${statusBadge(leak.status)}
+        </div>
+      </div>
+
+      <!-- sensor readings -->
+      <div class="ic-sensors">
+        <div class="sensor-box">
+          <div class="sb-val">${esc(ss.flowSensorData??'—')}</div>
+          <div class="sb-unit">Flow (L/min)</div>
+        </div>
+        <div class="sensor-box">
+          <div class="sb-val">${esc(ss.pressureSensorData??'—')}</div>
+          <div class="sb-unit">Pressure (PSI)</div>
+        </div>
+        <div class="sensor-box">
+          <div class="sb-val">${esc(ss.tankLevelSensorData??'—')}</div>
+          <div class="sb-unit">Tank level (%)</div>
+        </div>
+        <div class="sensor-box" style="${sev==='HIGH'?'border-color:var(--danger-bd);background:var(--danger-bg)':''}">
+          <div class="sb-val" style="${sev==='HIGH'?'color:var(--danger)':''}">${esc(ss.waterLossRate!=null?ss.waterLossRate.toFixed?.(2):ss.waterLossRate:'0.00')}</div>
+          <div class="sb-unit">Water loss (L/hr)</div>
+        </div>
+      </div>
+
+      <!-- action bar -->
+      <div class="ic-actions">
+        ${leak.status==='DETECTED'
+          ?`<button class="btn" data-action="open" data-id="${esc(leak._id)}" style="background:var(--warning)">Open for proposals</button>`:''}
+        ${isOpen
+          ?`<button class="btn" data-action="proposals" data-id="${esc(leak._id)}">🔧 View proposals &amp; assign plumber</button>`:''}
+        ${leak.status==='VERIFYING_RECOVERY'
+          ?`<button class="btn" data-action="verify" data-id="${esc(leak._id)}" style="background:var(--success)">✔ Verify recovery</button>`:''}
+        ${leak.status==='RECOVERY_FAILED'
+          ?`<button class="btn btn-ghost" data-action="retry-verification" data-id="${esc(leak._id)}">Retry recovery check</button>`:''}
+        ${isOpen
+          ?`<button class="btn btn-ghost" data-action="cancel" data-id="${esc(leak._id)}" style="color:var(--danger);border-color:var(--danger-bd)">Cancel incident</button>`:''}
+      </div>
+
+      <!-- proposals panel (injected on click) -->
+      <div id="proposal-panel-${esc(leak._id)}"></div>
+    </div>`;
+  }).join('');
 }
+
+/* ── proposal panel for one incident ── */
+async function showProposals(incidentId) {
+  const panel = $(`proposal-panel-${incidentId}`);
+  if(!panel) return;
+  panel.innerHTML = '<div class="proposals-panel"><div class="pp-title">Loading proposals…</div></div>';
+
+  const proposals = await api(`/admin/leaks/${incidentId}/proposals`);
+  if(!proposals.length){
+    panel.innerHTML='<div class="proposals-panel"><div class="pp-title">No proposals yet — plumbers will see this incident and submit estimates.</div></div>';
+    return;
+  }
+
+  // Sort cheapest first, mark best
+  const sorted = [...proposals].sort((a,b)=>(a.totalEstimatedCharges||0)-(b.totalEstimatedCharges||0));
+  const bestId = sorted[0]?._id;
+
+  panel.innerHTML = `
+    <div class="proposals-panel">
+      <div class="pp-title">📋 ${sorted.length} proposal${sorted.length>1?'s':''} received — sorted cheapest first</div>
+      ${sorted.map(p => {
+        const isBest = String(p._id)===String(bestId);
+        const avail  = p.earliestAvailability ? new Date(p.earliestAvailability).toLocaleDateString() : '—';
+        return `
+        <div class="proposal-row" style="${isBest?'background:#f0fdf4':''}" >
+          <div>
+            <div class="pr-name">
+              ${esc(p.plumberId?.name||'Unknown plumber')}
+              ${isBest?'<span class="badge b-green" style="margin-left:8px">⭐ Best value</span>':''}
+            </div>
+            <div class="pr-method">${esc(p.repairMethod)}</div>
+            <div class="pr-costs">
+              <span>Labour: <strong>₹${esc(p.labourCharges)}</strong></span>
+              <span>Materials: <strong>₹${esc(p.materialCharges)}</strong></span>
+              ${p.visitCharges?`<span>Visit: <strong>₹${esc(p.visitCharges)}</strong></span>`:''}
+              ${p.otherCharges?`<span>Other: <strong>₹${esc(p.otherCharges)}</strong></span>`:''}
+              <span>Duration: <strong>${esc(p.estimatedDurationHours)} hrs</strong></span>
+              <span>Available: <strong>${esc(avail)}</strong></span>
+            </div>
+            ${p.warrantyDetails?`<div style="font-size:12px;color:var(--muted);margin-top:4px">Warranty: ${esc(p.warrantyDetails)}</div>`:''}
+            ${p.plumberProfile?`<div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(p.plumberProfile.city||'')}${p.plumberProfile.state?', '+p.plumberProfile.state:''} · ${esc(p.plumberProfile.experienceYears||0)} yrs exp</div>`:''}
+          </div>
+          <div class="pr-assign-col">
+            <div class="pr-total">₹${esc(p.totalEstimatedCharges)}</div>
+            ${p.status==='submitted'
+              ?`<button class="btn" data-action="assign-proposal" data-id="${esc(p._id)}" data-incident="${esc(incidentId)}"
+                  style="${isBest?'background:var(--success)':''}">
+                  Assign this plumber
+                </button>`
+              :`<span class="badge b-grey">${esc(p.status)}</span>`}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+/* ── assignments ── */
 async function loadAssignments() {
-  const result=await api('/admin/assignments?limit=100');
-  const items=result.data||result;
-  $('assignments').innerHTML=items.length?items.map(item=>`<article class="record"><strong>${esc(item.incidentId?.incidentId||'Incident')}</strong> · ${esc(item.status)}<div>${esc(item.plumberId?.name)} · ${esc(item.selectedProposalId?.totalEstimatedCharges)} estimated</div></article>`).join(''):'<div class="card empty-state">No assignments.</div>';
+  const result = await api('/admin/assignments?limit=50');
+  const items = result.data || [];
+  $('assignments').innerHTML = items.length
+    ? items.map(item=>{
+        const inc = item.incidentId||{};
+        const statusMap={assigned:'b-amber',accepted:'b-blue',in_progress:'b-blue',completed:'b-green',reassigned:'b-grey'};
+        return `
+        <div class="assign-card">
+          <div class="ac-head">
+            <strong>${esc(inc.incidentId||'Incident')} · ${esc((inc.severity||'').toUpperCase())} severity</strong>
+            <span class="badge ${statusMap[item.status]||'b-grey'}">${esc(item.status.replace(/_/g,' '))}</span>
+          </div>
+          <div style="font-size:13px">
+            <b>Plumber:</b> ${esc(item.plumberId?.name||'—')} &nbsp;
+            <b>Total:</b> ₹${esc(item.selectedProposalId?.totalEstimatedCharges??'—')} &nbsp;
+            <b>Assigned:</b> ${item.assignedAt?new Date(item.assignedAt).toLocaleDateString():'—'}
+          </div>
+        </div>`;
+      }).join('')
+    : '<div class="card empty-state">No active assignments.</div>';
 }
+
+/* ── plumbers ── */
+async function loadPlumbers() {
+  const result = await api(`/admin/plumbers?status=${encodeURIComponent($('plumber-filter').value)}`);
+  const profiles = result.data || [];
+  $('plumbers').innerHTML = profiles.length
+    ? profiles.map(profile=>{
+        const user = profile.userId||{};
+        const st   = profile.approvalStatus;
+        let actions = '';
+        if(st==='pending')   actions=`<button class="btn" data-action="approve" data-id="${esc(profile._id)}" style="background:var(--success)">Approve</button><button class="btn btn-ghost" data-action="reject" data-id="${esc(profile._id)}" style="color:var(--danger);border-color:var(--danger-bd)">Reject</button>`;
+        else if(st==='approved') actions=`<button class="btn btn-ghost" data-action="suspend" data-id="${esc(profile._id)}">Suspend</button>`;
+        else if(st==='suspended') actions=`<button class="btn btn-ghost" data-action="reactivate" data-id="${esc(profile._id)}">Reactivate</button>`;
+        const statusColors={pending:'b-amber',approved:'b-green',rejected:'b-grey',suspended:'b-grey'};
+        return `
+        <div class="plumber-card">
+          <div class="pc-info">
+            <h3>${esc(user.name||'—')} <span class="badge ${statusColors[st]||'b-grey'}" style="margin-left:6px">${esc(st)}</span></h3>
+            <p>${esc(user.email)} · ${esc(profile.phone||'—')}</p>
+            <p>${esc(profile.city||'')}, ${esc(profile.state||'')} · ${esc(profile.experienceYears||0)} yrs · ${esc((profile.skills||[]).join(', ')||'—')}</p>
+          </div>
+          <div class="pc-actions">${actions}</div>
+        </div>`;
+      }).join('')
+    : '<div class="card empty-state">No plumbers in this status.</div>';
+}
+
+/* ── recipient ── */
+async function loadRecipient() {
+  const r = await fetch('/api/notifications/settings',{credentials:'same-origin'});
+  if(!r.ok) return;
+  const s = await r.json();
+  $('owner-form').elements.ownerName.value  = s.ownerName  || '';
+  $('owner-form').elements.ownerEmail.value = s.ownerEmail || '';
+}
+
+/* ── audit ── */
 async function loadAudit() {
-  const result=await api('/admin/audit-logs?limit=20');
-  const rows=result.data||result;
-  $('audit-logs').innerHTML=rows.length?rows.map(row=>`<article class="record"><strong>${esc(row.action)}</strong> · ${esc(row.entityType)} ${esc(row.entityId)}<div class="metric-sub">${esc(row.actorUserId?.name||'System')} · ${esc(new Date(row.createdAt).toLocaleString())}</div></article>`).join(''):'<div class="card empty-state">No audit entries.</div>';
+  const result = await api('/admin/audit-logs?limit=15');
+  const rows   = result.data || [];
+  $('audit-logs').innerHTML = rows.length
+    ? rows.map(r=>`
+        <div class="card" style="padding:12px 16px">
+          <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px">
+            <strong style="font-size:13px">${esc(r.action)}</strong>
+            <span class="metric-sub">${esc(new Date(r.createdAt).toLocaleString())}</span>
+          </div>
+          <div class="metric-sub">${esc(r.actorUserId?.name||'System')} · ${esc(r.entityType||'')} ${esc(r.entityId||'')}</div>
+        </div>`).join('')
+    : '<div class="card empty-state">No audit entries yet.</div>';
 }
+
+/* ── master refresh ── */
 async function refresh() {
-  $('page-message').textContent='Loading…';
+  msg('page-message','Loading…',true);
   try {
-    if(!await loadUser())return;
-    // Load all sections independently so one failure doesn't block others
-    const results = await Promise.allSettled([
-      loadDashboard(),
-      loadRecipient(),
-      loadPlumbers(),
-      loadLeaks(),
-      loadAssignments(),
-      loadAudit(),
+    if(!await loadUser()) return;
+    await Promise.allSettled([
+      loadDashboard(), loadRecipient(), loadLeaks(),
+      loadAssignments(), loadPlumbers(), loadAudit(),
     ]);
-    const failed = results.filter(r=>r.status==='rejected').map(r=>r.reason?.message);
-    if(failed.length) {
-      message('page-message', 'Some sections failed to load: ' + failed.join('; '));
-    } else {
-      $('page-message').textContent='';
-    }
-  } catch(error) {
-    if(error.message.includes('Authentication required')||error.message.includes('Invalid token')) { location.replace('/login.html'); return; }
-    message('page-message',error.message);
+    $('page-message').textContent = '';
+  } catch(e) {
+    if(e.message.includes('Authentication')||e.message.includes('Invalid token')){location.replace('/login.html');return;}
+    msg('page-message', e.message);
   }
 }
 
-$('owner-form').addEventListener('submit',async event=>{
-  event.preventDefault();const form=event.currentTarget;const button=form.querySelector('button');button.disabled=true;
-  try{const result=await api('/notifications/settings',{method:'PUT',body:JSON.stringify(Object.fromEntries(new FormData(form)))});message('owner-message',result.message,true);}
-  catch(error){message('owner-message',error.message);}finally{button.disabled=false;}
+/* ── event handlers ── */
+$('leak-filter').addEventListener('change', ()=>loadLeaks().catch(()=>{}));
+$('plumber-filter').addEventListener('change', ()=>loadPlumbers().catch(()=>{}));
+$('refresh').addEventListener('click', refresh);
+$('logout').addEventListener('click', async()=>{
+  await fetch('/api/auth/logout',{method:'POST',credentials:'same-origin'});
+  location.replace('/login.html');
 });
-$('invite-form').addEventListener('submit',async event=>{
-  event.preventDefault();const form=event.currentTarget;const values=Object.fromEntries(new FormData(form));const button=form.querySelector('button');button.disabled=true;
-  try{const result=await api('/admin/plumbers',{method:'POST',body:JSON.stringify({...values,serviceRadiusKm:Number(values.serviceRadiusKm),experienceYears:Number(values.experienceYears),skills:values.skillsText.split(',').map(v=>v.trim()).filter(Boolean)})});message('invite-message',result.message,true);form.reset();await loadPlumbers();}
-  catch(error){message('invite-message',error.message);}finally{button.disabled=false;}
-});
-$('plumbers').addEventListener('click',async event=>{
-  const b=event.target.closest('button[data-action]');if(!b)return;b.disabled=true;
-  try{
-    let result;
-    if(b.dataset.action==='approve'||b.dataset.action==='reject')result=await api(`/admin/plumbers/${b.dataset.id}/approval`,{method:'PATCH',body:JSON.stringify({status:b.dataset.action==='approve'?'approved':'rejected'})});
-    else result=await api(`/admin/plumbers/${b.dataset.id}/status`,{method:'PATCH',body:JSON.stringify({status:b.dataset.action==='suspend'?'suspended':'active'})});
-    message('page-message',result.message,true);
-    loadPlumbers().catch(error=>message('page-message',`Updated successfully, but the plumber list could not refresh: ${error.message}`));
-    loadDashboard().catch(error=>message('page-message',`Updated successfully, but dashboard counts could not refresh: ${error.message}`));
-  }catch(error){message('page-message',error.message);}finally{b.disabled=false;}
-});
-$('leak-filter').addEventListener('change',()=>loadLeaks().catch(error=>message('page-message',error.message)));
-$('plumber-filter').addEventListener('change',()=>loadPlumbers().catch(error=>message('page-message',error.message)));
-$('leaks').addEventListener('click',async event=>{
-  const b=event.target.closest('button[data-action]');if(!b)return;b.disabled=true;
-  try{
-    if(b.dataset.action==='open')await api(`/admin/leaks/${b.dataset.id}/status`,{method:'PATCH',body:JSON.stringify({status:'OPEN_FOR_PROPOSALS',reason:'Administrator opened proposals.'})});
-    if(b.dataset.action==='cancel'){if(!confirm('Cancel this incident?'))return;await api(`/admin/leaks/${b.dataset.id}/status`,{method:'PATCH',body:JSON.stringify({status:'CANCELLED',reason:'Cancelled by administrator.'})});}
-    if(b.dataset.action==='verify'){const result=await api(`/repairs/${b.dataset.id}/verify-recovery`,{method:'POST',body:'{}'});message('page-message',result.message,result.recovered);}
-    if(b.dataset.action==='retry-verification'){
-      await api(`/admin/leaks/${b.dataset.id}/status`,{method:'PATCH',body:JSON.stringify({status:'VERIFYING_RECOVERY',reason:'Administrator requested a new recovery check.'})});
-      const result=await api(`/repairs/${b.dataset.id}/verify-recovery`,{method:'POST',body:'{}'});
-      message('page-message',result.message,result.recovered);
+
+$('leaks').addEventListener('click', async event => {
+  const b = event.target.closest('button[data-action]');
+  if(!b) return;
+  b.disabled = true;
+  try {
+    const id = b.dataset.id;
+    if(b.dataset.action==='open')
+      await api(`/admin/leaks/${id}/status`,{method:'PATCH',body:JSON.stringify({status:'OPEN_FOR_PROPOSALS',reason:'Administrator opened for proposals.'})});
+
+    if(b.dataset.action==='cancel'){
+      if(!confirm('Cancel this incident?')) return;
+      await api(`/admin/leaks/${id}/status`,{method:'PATCH',body:JSON.stringify({status:'CANCELLED',reason:'Cancelled by administrator.'})});
     }
     if(b.dataset.action==='proposals'){
-      const proposals=await api(`/admin/leaks/${b.dataset.id}/proposals`);
-      const container=document.getElementById(`proposal-${b.dataset.id}`);
-      container.innerHTML=proposals.length?`<h4 style="margin-top:14px">Proposals</h4><div class="stack">${proposals.map(p=>`<div class="record"><strong>${esc(p.plumberId?.name)}</strong> · ${esc(p.status)}<div>${esc(p.repairMethod)}</div><div>Labour ${esc(p.labourCharges)} · Materials ${esc(p.materialCharges)} · Visit ${esc(p.visitCharges)} · Total ${esc(p.totalEstimatedCharges)}</div><div>${esc(p.estimatedDurationHours)} hours · Available ${esc(new Date(p.earliestAvailability).toLocaleString())}</div>${p.status==='submitted'?`<button class="btn btn-ghost" data-action="assign-proposal" data-id="${esc(p._id)}" data-incident="${esc(b.dataset.id)}">Assign plumber</button>`:''}</div>`).join('')}</div>`:'<p class="metric-sub">No proposals submitted yet.</p>';
+      await showProposals(id);
+      return; // don't reload full list
     }
     if(b.dataset.action==='assign-proposal'){
-      if(!confirm('Assign this plumber to the incident?'))return;
-      const incidentId=b.dataset.incident;
-      await api(`/admin/leaks/${incidentId}/assign`,{method:'POST',body:JSON.stringify({proposalId:b.dataset.id})});
-      await loadLeaks();await loadAssignments();
+      if(!confirm('Assign this plumber to the incident? All other proposals will be marked as not selected.')) return;
+      await api(`/admin/leaks/${b.dataset.incident}/assign`,{method:'POST',body:JSON.stringify({proposalId:id})});
+      msg('page-message','Plumber assigned successfully. They will receive an email notification.',true);
+      await Promise.allSettled([loadLeaks(), loadAssignments(), loadDashboard()]);
+      return;
     }
-    if(!['proposals','assign-proposal'].includes(b.dataset.action))await loadLeaks();
-  }catch(error){message('page-message',error.message);}finally{b.disabled=false;}
+    if(b.dataset.action==='verify'){
+      const result = await api(`/repairs/${id}/verify-recovery`,{method:'POST',body:'{}'});
+      msg('page-message', result.message, result.recovered);
+    }
+    if(b.dataset.action==='retry-verification'){
+      await api(`/admin/leaks/${id}/status`,{method:'PATCH',body:JSON.stringify({status:'VERIFYING_RECOVERY',reason:'Admin requested retry.'})});
+      const result = await api(`/repairs/${id}/verify-recovery`,{method:'POST',body:'{}'});
+      msg('page-message', result.message, result.recovered);
+    }
+    await loadLeaks();
+    loadDashboard().catch(()=>{});
+  } catch(e){ msg('page-message', e.message); }
+  finally { b.disabled = false; }
 });
-$('refresh').addEventListener('click',refresh);
-$('logout').addEventListener('click',async()=>{await fetch('/api/auth/logout',{method:'POST',credentials:'same-origin'});location.replace('/login.html');});
 
-// Live updates via SSE — refresh leaks and dashboard when a new snapshot arrives
+$('plumbers').addEventListener('click', async event => {
+  const b = event.target.closest('button[data-action]');
+  if(!b) return;
+  b.disabled = true;
+  try {
+    const id = b.dataset.id;
+    if(b.dataset.action==='approve'||b.dataset.action==='reject')
+      await api(`/admin/plumbers/${id}/approval`,{method:'PATCH',body:JSON.stringify({status:b.dataset.action==='approve'?'approved':'rejected'})});
+    else
+      await api(`/admin/plumbers/${id}/status`,{method:'PATCH',body:JSON.stringify({status:b.dataset.action==='suspend'?'suspended':'active'})});
+    msg('page-message','Updated.',true);
+    await Promise.allSettled([loadPlumbers(), loadDashboard()]);
+  } catch(e){ msg('page-message', e.message); }
+  finally { b.disabled = false; }
+});
+
+$('invite-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const btn  = form.querySelector('button');
+  btn.disabled = true;
+  try {
+    const v = Object.fromEntries(new FormData(form));
+    const result = await api('/admin/plumbers',{method:'POST',body:JSON.stringify({
+      ...v,
+      serviceRadiusKm: Number(v.serviceRadiusKm)||25,
+      experienceYears: Number(v.experienceYears)||0,
+      skills: v.skillsText?v.skillsText.split(',').map(s=>s.trim()).filter(Boolean):[],
+    })});
+    msg('invite-message', result.message, true);
+    form.reset();
+    loadPlumbers().catch(()=>{});
+  } catch(e){ msg('invite-message', e.message); }
+  finally { btn.disabled = false; }
+});
+
+$('owner-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const btn = event.currentTarget.querySelector('button');
+  btn.disabled = true;
+  try {
+    const result = await api('/notifications/settings',{method:'PUT',body:JSON.stringify(Object.fromEntries(new FormData(event.currentTarget)))});
+    msg('owner-message', result.message, true);
+  } catch(e){ msg('owner-message', e.message); }
+  finally { btn.disabled = false; }
+});
+
+// Live SSE — auto-refresh when new prediction arrives
 window.addEventListener('wm:snapshot', () => {
-  loadLeaks().catch(()=>{});
   loadDashboard().catch(()=>{});
+  loadLeaks().catch(()=>{});
 });
 
 refresh();
