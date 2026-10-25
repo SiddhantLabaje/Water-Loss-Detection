@@ -40,11 +40,18 @@
   <script>
     const form = document.getElementById('login-form');
     const message = document.getElementById('message');
+    function landingPage(user, profile) {
+      if (user.role === 'admin') return '/admin.html';
+      if (user.role === 'plumber' && user.accountStatus === 'active' && profile?.approvalStatus === 'approved') {
+        return '/index.html';
+      }
+      return '/plumber.html';
+    }
     async function redirectIfSignedIn() {
       const response = await fetch('/api/auth/me', { credentials: 'same-origin' });
       if (!response.ok) return;
-      const { user } = await response.json();
-      location.replace(user.role === 'admin' ? '/admin.html' : '/plumber.html');
+      const { user, profile } = await response.json();
+      location.replace(landingPage(user, profile));
     }
     form.addEventListener('submit', async event => {
       event.preventDefault();
@@ -60,14 +67,19 @@
         });
         const result = await response.json();
         if (!response.ok) throw new Error(result.message || 'Sign in failed.');
-        location.replace(result.user.role === 'admin' ? '/admin.html' : '/plumber.html');
+        const session = await fetch('/api/auth/me', { credentials: 'same-origin' });
+        const details = await session.json();
+        if (!session.ok) throw new Error(details.message || 'Unable to load your account.');
+        location.replace(landingPage(details.user, details.profile));
       } catch (error) {
         message.textContent = error.message;
       } finally {
         button.disabled = false;
       }
     });
-    redirectIfSignedIn().catch(() => {});
+    redirectIfSignedIn().catch(() => {
+      message.textContent = 'Unable to verify your current session. You can still sign in.';
+    });
   </script>
 </body>
 </html>

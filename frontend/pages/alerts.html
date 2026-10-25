@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Alerts — Smart Water Monitor</title>
 <link rel="stylesheet" href="/shared.css">
+<script src="/auth-ui.js" defer></script>
 </head>
 <body>
 
@@ -58,7 +59,7 @@
       </div>
     </section>
 
-    <section>
+    <section data-admin-only>
       <div class="sec-header"><span class="sec-title">Critical Alert Email</span></div>
       <div class="card">
         <p class="muted" style="margin-bottom:16px">A notification is sent when the system first enters CRITICAL status. Save the owner's name and email address below.</p>
@@ -145,6 +146,13 @@ function anomBadge(v)   { return v === 'ABNORMAL' ? '<span class="badge b-red">A
 function sevBadge(s)    { return s === 'high' ? '<span class="badge b-red">High</span>' : s === 'medium' ? '<span class="badge b-amber">Medium</span>' : s ? `<span class="badge b-green">${cap(s)}</span>` : '—'; }
 
 async function loadNotificationSettings() {
+  const sessionResponse = await fetch(`${API}/auth/me`, { credentials: 'same-origin' });
+  if (!sessionResponse.ok) throw new Error(`Unable to verify account (${sessionResponse.status}).`);
+  const { user } = await sessionResponse.json();
+  if (user.role !== 'admin') {
+    document.querySelector('[data-admin-only]').hidden = true;
+    return;
+  }
   const response = await fetch(`${API}/notifications/settings`);
   if (response.status === 404) return;
   if (!response.ok) throw new Error(`Unable to load notification settings (${response.status}).`);

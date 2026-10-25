@@ -13,10 +13,11 @@
 import { Router }              from 'express';
 import { addClient }           from '../services/sse.service.js';
 import { getInitialSnapshot }  from '../services/broadcaster.service.js';
+import { authenticate, requireMonitoringAccess } from '../middleware/auth.middleware.js';
 
 const router = Router();
 
-router.get('/', async (req, res) => {
+router.get('/', authenticate, requireMonitoringAccess, async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
 
   // Register client — sets SSE headers and keeps connection open

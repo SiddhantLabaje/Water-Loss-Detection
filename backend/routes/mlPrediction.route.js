@@ -5,8 +5,11 @@ import {
   getPredictionStats,
   getAlerts,
 } from "../controllers/mlPrediction.controller.js";
+import { authenticate, requireMonitoringAccess } from "../middleware/auth.middleware.js";
 
 const router = Router();
+
+router.use(authenticate, requireMonitoringAccess);
 
 // Latest single prediction (used by live dashboard)
 router.get("/latest", getLatestPrediction);

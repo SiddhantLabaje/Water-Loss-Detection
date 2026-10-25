@@ -15,13 +15,13 @@
 <body>
 <aside class="sidebar">
   <div class="sb-brand"><div class="sb-logo">💧</div><div><div class="sb-name">Smart Water</div><div class="sb-sub">Plumber portal</div></div></div>
-  <div class="sb-section-label">My workspace</div><nav><a class="active" href="plumber.html">Repair workspace</a><a href="index.html">Sensor dashboard</a></nav>
+  <div class="sb-section-label">My workspace</div><nav><a class="active" href="plumber.html">Repair workspace</a><a id="monitor-link" href="index.html" hidden>Sensor dashboard</a><a id="analytics-link" href="analytics.html" hidden>Analytics</a></nav>
   <div class="sb-footer"><span id="plumber-name"></span><button id="logout" class="btn btn-ghost" style="width:100%;margin-top:10px">Sign out</button></div>
 </aside>
 <main class="main">
   <header class="topbar"><div class="topbar-left"><h1>Repair workspace</h1><p>Available repair requests, proposals and your assignments.</p></div><button id="refresh" class="btn">Refresh</button></header>
   <div class="content">
-    <section id="pending" class="card" hidden><h2>Account awaiting approval</h2><p class="muted">Your email is verified. An administrator must approve your plumber profile before repair requests are available.</p></section>
+    <section id="pending" class="card" hidden><h2>Account awaiting approval</h2><p id="approval-message" class="muted">An administrator must approve your plumber profile before monitoring data and repair requests are available.</p></section>
     <section id="workspace" hidden>
       <section><div class="sec-header"><span class="sec-title">Available repair requests</span></div><div id="requests" class="stack"></div></section>
       <section><div class="sec-header"><span class="sec-title">My proposals</span></div><div id="proposals" class="stack"></div></section>
@@ -37,10 +37,18 @@ const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&
 async function api(path,options={}){const response=await fetch('/api'+path,{credentials:'same-origin',...options,headers:{'Content-Type':'application/json',...(options.headers||{})}});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.message||`Request failed (${response.status})`);return data;}
 function showMessage(text,ok=false){$('message').textContent=text;$('message').style.color=ok?'var(--success)':'var(--danger)';}
 async function load(){
-  const {user}=await api('/auth/me');
+  const {user,profile}=await api('/auth/me');
   if(user.role!=='plumber'){location.replace('/admin.html');return;}
   $('plumber-name').textContent=user.name;
-  if(user.accountStatus==='pending'){ $('pending').hidden=false;$('workspace').hidden=true;return; }
+  const approved=user.accountStatus==='active'&&profile?.approvalStatus==='approved';
+  if(!approved){
+    $('pending').hidden=false;$('workspace').hidden=true;
+    $('approval-message').textContent=user.accountStatus==='rejected'||profile?.approvalStatus==='rejected'
+      ?'Your plumber application was not approved. Contact an administrator for more information.'
+      :'An administrator must approve your plumber profile before monitoring data and repair requests are available.';
+    return;
+  }
+  $('monitor-link').hidden=false;$('analytics-link').hidden=false;
   $('pending').hidden=true;$('workspace').hidden=false;
   const [requests,proposals,assignments]=await Promise.all([
     api('/plumber/repair-requests'),api('/plumber/proposals'),api('/plumber/assignments'),

@@ -17,6 +17,12 @@ import authRoutes    from "./routes/auth.route.js";
 import adminRoutes   from "./routes/admin.route.js";
 import plumberRoutes from "./routes/plumber.route.js";
 import repairRoutes  from "./routes/repair.route.js";
+import {
+  authenticatePage,
+  requireAdmin,
+  requireMonitoringAccess,
+  requirePlumber,
+} from "./middleware/auth.middleware.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -44,7 +50,7 @@ app.use("/api/admin",   adminRoutes);
 app.use("/api/plumber", plumberRoutes);
 // Repair lifecycle
 app.use("/api/repairs", repairRoutes);
-// Existing sensor/ML/dashboard routes — unchanged
+// Sensor, ML, and dashboard data requires an approved plumber or administrator.
 app.use("/api/sensors",          sensorRoutes);
 app.use("/api/ml-predictions",   mlPredictionRoutes);
 app.use("/api/dashboard",        dashboardRoutes);
@@ -60,6 +66,25 @@ app.get("/api/health", (_req, res) => {
 const frontendRoot  = path.join(__dirname, "..", "frontend");
 const frontendPages = path.join(frontendRoot, "pages");
 
+// Start at sign-in; page-level checks handle authenticated role routing.
+app.get("/", (_req, res) => {
+  res.sendFile(path.join(frontendPages, "login.html"));
+});
+
+// Monitoring pages are intended for approved plumbers and administrators.
+app.get(
+  ["/index.html", "/sensors.html", "/predictions.html", "/analytics.html", "/alerts.html", "/dashboardData.html"],
+  authenticatePage,
+  requireMonitoringAccess,
+  (req, res) => res.sendFile(path.join(frontendPages, path.basename(req.path)))
+);
+app.get("/plumber.html", authenticatePage, requirePlumber, (_req, res) => {
+  res.sendFile(path.join(frontendPages, "plumber.html"));
+});
+app.get("/admin.html", authenticatePage, requireAdmin, (_req, res) => {
+  res.sendFile(path.join(frontendPages, "admin.html"));
+});
+
 // Serve shared assets (shared.css, live.js, stream.js) from frontend/
 app.use(express.static(frontendRoot));
 
@@ -68,15 +93,10 @@ app.use(express.static(frontendRoot));
 //      /index.html    → frontend/pages/index.html
 app.use(express.static(frontendPages));
 
-// Root "/" → dashboard
-app.get("/", (_req, res) => {
-  res.sendFile(path.join(frontendPages, "index.html"));
-});
-
 // Any other non-API, non-file route → 404 (don't silently redirect to dashboard)
 app.use((req, res, next) => {
   if (req.path.startsWith("/api")) return next();
-  res.status(404).sendFile(path.join(frontendPages, "index.html"));
+  res.status(404).send("Page not found.");
 });
 
 app.use((err, _req, res, _next) => {

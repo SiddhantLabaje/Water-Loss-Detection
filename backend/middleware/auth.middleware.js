@@ -26,6 +26,7 @@ export async function authenticate(req, res, next) {
     }
 
     if (!token) {
+      if (req.pageRequest) return res.redirect("/login.html");
       return res.status(401).json({ message: "Authentication required." });
     }
 
@@ -35,14 +36,17 @@ export async function authenticate(req, res, next) {
     );
 
     if (!user) {
+      if (req.pageRequest) return res.redirect("/login.html");
       return res.status(401).json({ message: "User no longer exists." });
     }
 
     if (user.accountStatus === "suspended") {
+      if (req.pageRequest) return res.redirect("/login.html");
       return res.status(403).json({ message: "Account is suspended." });
     }
 
     if (payload.tokenVersion !== user.tokenVersion) {
+      if (req.pageRequest) return res.redirect("/login.html");
       return res.status(401).json({ message: "Session is no longer valid. Please log in again." });
     }
 
@@ -50,9 +54,11 @@ export async function authenticate(req, res, next) {
     next();
   } catch (err) {
     if (err.name === "TokenExpiredError") {
+      if (req.pageRequest) return res.redirect("/login.html");
       return res.status(401).json({ message: "Session expired. Please log in again." });
     }
     if (err instanceof jwt.JsonWebTokenError) {
+      if (req.pageRequest) return res.redirect("/login.html");
       return res.status(401).json({ message: "Invalid token." });
     }
     console.error("[AUTH] Session verification failed:", err.message);
@@ -60,9 +66,15 @@ export async function authenticate(req, res, next) {
   }
 }
 
+export function authenticatePage(req, res, next) {
+  req.pageRequest = true;
+  return authenticate(req, res, next);
+}
+
 /** Require role: "admin" */
 export function requireAdmin(req, res, next) {
   if (!req.user || req.user.role !== "admin") {
+    if (req.pageRequest) return res.redirect(req.user?.role === "plumber" ? "/plumber.html" : "/login.html");
     return res.status(403).json({ message: "Admin access required." });
   }
   next();
@@ -71,6 +83,7 @@ export function requireAdmin(req, res, next) {
 /** Require role: "plumber" */
 export function requirePlumber(req, res, next) {
   if (!req.user || req.user.role !== "plumber") {
+    if (req.pageRequest) return res.redirect(req.user?.role === "admin" ? "/admin.html" : "/login.html");
     return res.status(403).json({ message: "Plumber access required." });
   }
   next();
@@ -79,11 +92,13 @@ export function requirePlumber(req, res, next) {
 /** Require approved plumber */
 export async function requireApprovedPlumber(req, res, next) {
   if (!req.user || req.user.role !== "plumber") {
+    if (req.pageRequest) return res.redirect("/login.html");
     return res.status(403).json({ message: "Plumber access required." });
   }
   try {
     const profile = await PlumberProfile.findOne({ userId: req.user._id });
     if (!profile || profile.approvalStatus !== "approved" || req.user.accountStatus !== "active") {
+      if (req.pageRequest) return res.redirect("/plumber.html");
       return res.status(403).json({ message: "Account is not approved for repair requests." });
     }
     req.plumberProfile = profile;
@@ -92,6 +107,12 @@ export async function requireApprovedPlumber(req, res, next) {
     console.error("[AUTH] Plumber approval lookup failed:", err.message);
     res.status(500).json({ message: "Unable to verify plumber account status." });
   }
+}
+
+/** Require an administrator or an approved plumber for monitoring data. */
+export function requireMonitoringAccess(req, res, next) {
+  if (req.user?.role === "admin") return next();
+  return requireApprovedPlumber(req, res, next);
 }
 
 /** Sign a JWT for a user */
