@@ -1,228 +1,240 @@
-import { createHash, randomBytes } from "node:crypto";
+import crypto from "crypto";
 import User from "../models/user.model.js";
 import PlumberProfile from "../models/plumberProfile.model.js";
 import { signToken } from "../middleware/auth.middleware.js";
+import { audit } from "../services/audit.service.js";
 import {
   sendEmailVerification,
   sendPasswordReset,
 } from "../services/notification.service.js";
 
-const SESSION_COOKIE = "token";
-const verificationExpiryMs = 24 * 60 * 60 * 1000;
-const resetExpiryMs = 60 * 60 * 1000;
+const COOKIE_OPTS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax",
+  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+};
 
-function hashToken(token) {
-  return createHash("sha256").update(token).digest("hex");
+function randomToken() {
+  return crypto.randomBytes(32).toString("hex");
 }
 
-function setSessionCookie(res, user) {
-  res.cookie(SESSION_COOKIE, signToken(user.id, user.role, user.tokenVersion), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-    path: "/",
-  });
-}
-
-function publicUser(user) {
-  return {
-    id: user._id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    accountStatus: user.accountStatus,
-    emailVerified: user.emailVerified,
-  };
-}
-
+// POST /api/auth/register  (plumber self-registration)
 export async function register(req, res) {
   try {
-    const email = req.body.email.trim().toLowerCase();
-    if (await User.exists({ email })) {
+    const { name, email, password, phone, serviceArea, city, state,
+            serviceRadiusKm, experienceYears, skills, businessName } = req.body;
+
+    const existing = await User.findOne({ email });
+    if (existing) {
       return res.status(409).json({ message: "An account with this email already exists." });
     }
 
-    const verifyToken = randomBytes(32).toString("hex");
+    const passwordHash     = await User.hashPassword(password);
+    const emailVerifyToken = randomToken();
+
     const user = await User.create({
-      name: req.body.name.trim(),
-      email,
-      passwordHash: await User.hashPassword(req.body.password),
-      role: "plumber",
+      name, email, passwordHash, role: "plumber",
+      emailVerified: false,
+      emailVerifyToken,
+      emailVerifyExpires: new Date(Date.now() + 24 * 60 * 60 * 1000),
       accountStatus: "pending",
-      emailVerifyToken: hashToken(verifyToken),
-      emailVerifyExpires: new Date(Date.now() + verificationExpiryMs),
     });
 
-    try {
-      await PlumberProfile.create({
-        userId: user._id,
-        phone: req.body.phone.trim(),
-        businessName: req.body.businessName?.trim() || "",
-        address: req.body.address.trim(),
-        city: req.body.city.trim(),
-        state: req.body.state.trim(),
-        serviceArea: `${req.body.city.trim()}, ${req.body.state.trim()}`,
-        serviceRadiusKm: Number(req.body.serviceRadiusKm),
-        experienceYears: Number(req.body.experienceYears),
-        skills: req.body.skills,
-        workingHours: req.body.workingHours?.trim() || "",
-        approvalStatus: "pending",
-      });
-    } catch (err) {
-      await User.deleteOne({ _id: user._id });
-      throw err;
-    }
+    await PlumberProfile.create({
+      userId: user._id,
+      phone: phone || "",
+      businessName: businessName || "",
+      serviceArea: serviceArea || "",
+      city: city || "",
+      state: state || "",
+      serviceRadiusKm: serviceRadiusKm || 25,
+      experienceYears: experienceYears || 0,
+      skills: Array.isArray(skills) ? skills : [],
+      approvalStatus: "pending",
+    });
 
-    try {
-      await sendEmailVerification(user, verifyToken);
-    } catch (err) {
-      console.error(`[AUTH] Verification email failed for user ${user.id}: ${err.message}`);
-      return res.status(503).json({
-        message: "Account created but verification email could not be sent. Ask an administrator to check email configuration.",
-      });
-    }
+    // Send verification email — don't crash if it fails
+    try { await sendEmailVerification(user, emailVerifyToken); } catch {}
+
+    await audit(user._id, "PLUMBER_REGISTERED", "User", user._id, {}, req);
 
     res.status(201).json({
-      message: "Registration received. Verify your email; an administrator must approve your plumber account.",
+      message: "Registration successful. Please check your email to verify your account.",
     });
   } catch (err) {
-    if (err.code === 11000) {
-      return res.status(409).json({ message: "An account with this email already exists." });
-    }
-    console.error("[AUTH] Registration failed:", err.message);
-    res.status(500).json({ message: "Unable to complete registration." });
+    console.error("register error:", err);
+    res.status(500).json({ message: "Registration failed. Please try again." });
   }
 }
 
+// POST /api/auth/login
 export async function login(req, res) {
   try {
-    const user = await User.findOne({ email: req.body.email.trim().toLowerCase() });
-    if (!user || !(await user.verifyPassword(req.body.password))) {
+    const { email, password } = req.body;
+
+    const user = await User.findOne({ email });
+    if (!user) {
       return res.status(401).json({ message: "Invalid email or password." });
     }
-    if (!user.emailVerified) {
-      return res.status(403).json({ message: "Verify your email before signing in." });
-    }
-    if (user.accountStatus === "suspended" || user.accountStatus === "rejected") {
-      return res.status(403).json({ message: "This account cannot sign in. Contact the administrator." });
+
+    const valid = await user.verifyPassword(password);
+    if (!valid) {
+      return res.status(401).json({ message: "Invalid email or password." });
     }
 
+    if (user.accountStatus === "suspended") {
+      return res.status(403).json({ message: "This account has been suspended." });
+    }
+
+    // Allow login even without email verification so plumbers can check status
+    const token = signToken(user._id, user.role);
     user.lastLoginAt = new Date();
     await user.save();
-    setSessionCookie(res, user);
-    res.json({ user: publicUser(user) });
+
+    await audit(user._id, "LOGIN", "User", user._id, { role: user.role }, req);
+
+    res
+      .cookie("token", token, COOKIE_OPTS)
+      .json({
+        message: "Logged in.",
+        token,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          emailVerified: user.emailVerified,
+          accountStatus: user.accountStatus,
+        },
+      });
   } catch (err) {
-    console.error("[AUTH] Login failed:", err.message);
-    res.status(500).json({ message: "Unable to sign in." });
+    console.error("login error:", err);
+    res.status(500).json({ message: "Login failed. Please try again." });
   }
 }
 
+// POST /api/auth/logout
 export async function logout(req, res) {
-  try {
-    await User.updateOne({ _id: req.user._id }, { $inc: { tokenVersion: 1 } });
-    res.clearCookie(SESSION_COOKIE, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      path: "/",
-    });
-    res.json({ message: "Signed out." });
-  } catch (err) {
-    console.error("[AUTH] Logout failed:", err.message);
-    res.status(500).json({ message: "Unable to sign out." });
+  res.clearCookie("token").json({ message: "Logged out." });
+}
+
+// GET /api/auth/me
+export async function getMe(req, res) {
+  const user = req.user;
+  let profile = null;
+  if (user.role === "plumber") {
+    profile = await PlumberProfile.findOne({ userId: user._id }).lean();
   }
+  res.json({ user, profile });
 }
 
-export async function me(req, res) {
-  res.json({ user: publicUser(req.user) });
-}
-
+// POST /api/auth/verify-email
 export async function verifyEmail(req, res) {
   try {
-    const user = await User.findOneAndUpdate(
-      {
-        emailVerifyToken: hashToken(req.body.token),
-        emailVerifyExpires: { $gt: new Date() },
-      },
-      {
-        $set: { emailVerified: true },
-        $unset: { emailVerifyToken: 1, emailVerifyExpires: 1 },
-      },
-      { new: true }
-    );
-    if (!user) return res.status(400).json({ message: "Verification link is invalid or expired." });
-    res.json({ message: "Email verified. Your plumber account is awaiting administrator approval." });
-  } catch (err) {
-    console.error("[AUTH] Email verification failed:", err.message);
-    res.status(500).json({ message: "Unable to verify email." });
-  }
-}
-
-export async function resendVerification(req, res) {
-  const message = "If the account exists and is not verified, a new verification email will be sent.";
-  try {
+    const { token } = req.body;
     const user = await User.findOne({
-      email: req.body.email.trim().toLowerCase(),
-      emailVerified: false,
+      emailVerifyToken: token,
+      emailVerifyExpires: { $gt: new Date() },
     });
-    if (!user) return res.json({ message });
-    const token = randomBytes(32).toString("hex");
-    user.emailVerifyToken = hashToken(token);
-    user.emailVerifyExpires = new Date(Date.now() + verificationExpiryMs);
-    await user.save();
-    try {
-      await sendEmailVerification(user, token);
-    } catch (err) {
-      console.error(`[AUTH] Verification resend failed for user ${user.id}: ${err.message}`);
-      return res.status(503).json({ message: "Verification email could not be sent. Contact the administrator." });
+
+    if (!user) {
+      return res.status(400).json({ message: "Invalid or expired verification token." });
     }
-    res.json({ message });
+
+    user.emailVerified      = true;
+    user.emailVerifyToken   = null;
+    user.emailVerifyExpires = null;
+    await user.save();
+
+    res.json({ message: "Email verified successfully." });
   } catch (err) {
-    console.error("[AUTH] Verification resend request failed:", err.message);
-    res.status(500).json({ message: "Unable to process verification request." });
+    res.status(500).json({ message: "Verification failed." });
   }
 }
 
+// POST /api/auth/forgot-password
 export async function forgotPassword(req, res) {
-  const genericMessage = "If the account exists, a password reset link will be sent.";
   try {
-    const user = await User.findOne({ email: req.body.email.trim().toLowerCase() });
-    if (!user) return res.json({ message: genericMessage });
+    const { email } = req.body;
+    const user = await User.findOne({ email });
 
-    const token = randomBytes(32).toString("hex");
-    user.passwordResetToken = hashToken(token);
-    user.passwordResetExpires = new Date(Date.now() + resetExpiryMs);
-    await user.save();
-    try {
-      await sendPasswordReset(user, token);
-    } catch (err) {
-      console.error(`[AUTH] Password reset email failed for user ${user.id}: ${err.message}`);
-      return res.status(503).json({ message: "Password reset email could not be sent. Contact the administrator." });
+    // Always return success to prevent email enumeration
+    if (user) {
+      const resetToken = randomToken();
+      user.passwordResetToken   = resetToken;
+      user.passwordResetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+      await user.save();
+      try { await sendPasswordReset(user, resetToken); } catch {}
     }
-    res.json({ message: genericMessage });
+
+    res.json({ message: "If an account with that email exists, a reset link has been sent." });
   } catch (err) {
-    console.error("[AUTH] Password reset request failed:", err.message);
-    res.status(500).json({ message: "Unable to process password reset request." });
+    res.status(500).json({ message: "Request failed." });
   }
 }
 
+// POST /api/auth/reset-password
 export async function resetPassword(req, res) {
   try {
+    const { token, password } = req.body;
     const user = await User.findOne({
-      passwordResetToken: hashToken(req.body.token),
+      passwordResetToken: token,
       passwordResetExpires: { $gt: new Date() },
     });
-    if (!user) return res.status(400).json({ message: "Password reset link is invalid or expired." });
 
-    user.passwordHash = await User.hashPassword(req.body.password);
-    user.passwordResetToken = null;
-    user.passwordResetExpires = null;
-    user.tokenVersion += 1;
+    if (!user) {
+      return res.status(400).json({ message: "Invalid or expired reset token." });
+    }
+
+    user.passwordHash          = await User.hashPassword(password);
+    user.passwordResetToken    = null;
+    user.passwordResetExpires  = null;
     await user.save();
-    res.json({ message: "Password reset successfully. Please sign in again." });
+
+    await audit(user._id, "PASSWORD_RESET", "User", user._id, {}, req);
+
+    res.json({ message: "Password reset successfully. You can now log in." });
   } catch (err) {
-    console.error("[AUTH] Password reset failed:", err.message);
-    res.status(500).json({ message: "Unable to reset password." });
+    res.status(500).json({ message: "Password reset failed." });
+  }
+}
+
+// POST /api/auth/bootstrap-admin  — one-time initial admin creation
+export async function adminBootstrap(req, res) {
+  try {
+    const BOOTSTRAP_KEY = process.env.ADMIN_BOOTSTRAP_KEY;
+    if (!BOOTSTRAP_KEY || BOOTSTRAP_KEY.length < 16) {
+      return res.status(503).json({ message: "Bootstrap not configured on this server." });
+    }
+
+    if (req.body.bootstrapKey !== BOOTSTRAP_KEY) {
+      return res.status(403).json({ message: "Invalid bootstrap key." });
+    }
+
+    const existingAdmin = await User.findOne({ role: "admin" });
+    if (existingAdmin) {
+      return res.status(409).json({ message: "An admin account already exists." });
+    }
+
+    const { name, email, password } = req.body;
+    const existing = await User.findOne({ email });
+    if (existing) {
+      return res.status(409).json({ message: "Email already in use." });
+    }
+
+    const passwordHash = await User.hashPassword(password);
+    const admin = await User.create({
+      name, email, passwordHash, role: "admin",
+      emailVerified: true,
+      accountStatus: "active",
+    });
+
+    await audit(admin._id, "ADMIN_BOOTSTRAP", "User", admin._id, { email }, req);
+
+    res.status(201).json({ message: "Admin account created successfully.", id: admin._id });
+  } catch (err) {
+    console.error("bootstrap error:", err);
+    res.status(500).json({ message: "Bootstrap failed." });
   }
 }

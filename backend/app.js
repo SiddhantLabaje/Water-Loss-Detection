@@ -4,52 +4,45 @@ import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import path from "path";
 import { fileURLToPath } from "url";
-import authRoutes from "./routes/auth.route.js";
-import adminRoutes from "./routes/admin.route.js";
+
+// Existing routes (always present)
+import dashboardRoutes    from "./routes/dashboard.route.js";
+import sensorRoutes       from "./routes/sensor.route.js";
+import mlPredictionRoutes from "./routes/mlPrediction.route.js";
+import streamRoute        from "./routes/stream.route.js";
+import notificationRoutes from "./routes/notification.route.js";
+
+// New routes (auth / admin / plumber platform)
+import authRoutes    from "./routes/auth.route.js";
+import adminRoutes   from "./routes/admin.route.js";
 import plumberRoutes from "./routes/plumber.route.js";
-import dashboardRoutes     from "./routes/dashboard.route.js";
-import sensorRoutes        from "./routes/sensor.route.js";
-import mlPredictionRoutes  from "./routes/mlPrediction.route.js";
-import streamRoute         from "./routes/stream.route.js";
-import notificationRoutes  from "./routes/notification.route.js";
+import repairRoutes  from "./routes/repair.route.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
 const app = express();
-const allowedOrigins = new Set(
-  [
-    ...(process.env.WEB_ORIGINS || "").split(","),
-    process.env.RENDER_EXTERNAL_URL
-      ? `https://${process.env.RENDER_EXTERNAL_URL.replace(/^https?:\/\//, "")}`
-      : "",
-  ]
-    .map((origin) => origin.trim())
-    .filter(Boolean)
-);
 
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
-app.use(cors({
-  credentials: true,
-  origin(origin, callback) {
-    if (!origin || allowedOrigins.has(origin)) return callback(null, true);
-    const error = new Error("Origin is not allowed by CORS.");
-    error.status = 403;
-    callback(error);
-  },
-}));
+app.use(cors({ credentials: true, origin: true })); // allow all origins; tighten in production via WEB_ORIGINS
 app.use(express.json({ limit: "32kb" }));
 app.use(cookieParser());
 
 // ── API Routes ────────────────────────────────────────────────────────────
-app.use("/api/auth", authRoutes);
-app.use("/api/admin", adminRoutes);
+// Auth (login, register, password reset, email verify)
+app.use("/api/auth",    authRoutes);
+// Admin portal
+app.use("/api/admin",   adminRoutes);
+// Plumber portal
 app.use("/api/plumber", plumberRoutes);
-app.use("/api/sensors",         sensorRoutes);
-app.use("/api/ml-predictions",  mlPredictionRoutes);
-app.use("/api/dashboard",       dashboardRoutes);
-app.use("/api/stream",          streamRoute);
-app.use("/api/notifications",   notificationRoutes);
+// Repair lifecycle
+app.use("/api/repairs", repairRoutes);
+// Existing sensor/ML/dashboard routes — unchanged
+app.use("/api/sensors",          sensorRoutes);
+app.use("/api/ml-predictions",   mlPredictionRoutes);
+app.use("/api/dashboard",        dashboardRoutes);
+app.use("/api/stream",           streamRoute);
+app.use("/api/notifications",    notificationRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => {

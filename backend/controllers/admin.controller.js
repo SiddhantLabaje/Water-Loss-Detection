@@ -1,478 +1,431 @@
-import { createHash, randomBytes } from "node:crypto";
-import mongoose from "mongoose";
-import AuditLog from "../models/auditLog.model.js";
-import LeakEvent from "../models/leakEvent.model.js";
-import PlumberProfile from "../models/plumberProfile.model.js";
-import RepairAssignment from "../models/repairAssignment.model.js";
-import RepairProposal from "../models/repairProposal.model.js";
-import RepairRecord from "../models/repairRecord.model.js";
-import Sensor from "../models/sensor.model.js";
-import MlPrediction from "../models/mlPrediction.model.js";
-import Notification from "../models/notification.model.js";
+import crypto from "crypto";
 import User from "../models/user.model.js";
+import PlumberProfile from "../models/plumberProfile.model.js";
+import LeakEvent from "../models/leakEvent.model.js";
+import RepairProposal from "../models/repairProposal.model.js";
+import RepairAssignment from "../models/repairAssignment.model.js";
+import AuditLog from "../models/auditLog.model.js";
+import MlPrediction from "../models/mlPrediction.model.js";
 import { audit } from "../services/audit.service.js";
 import {
-  notifyAssignment,
-  sendPlumberApproved,
   sendPlumberInvite,
+  sendPlumberApproved,
   sendPlumberRejected,
+  sendProposalSelected,
+  sendProposalNotSelected,
 } from "../services/notification.service.js";
 
-const hashToken = (value) => createHash("sha256").update(value).digest("hex");
-const safeUserFields = "name email accountStatus emailVerified createdAt";
-
-export async function listPlumbers(req, res) {
-  try {
-    const filter = {};
-    if (["pending", "approved", "rejected", "suspended"].includes(req.query.status)) {
-      filter.approvalStatus = req.query.status;
-    }
-    const profiles = await PlumberProfile.find(filter)
-      .sort({ createdAt: -1 })
-      .limit(Math.min(Number(req.query.limit) || 50, 200))
-      .populate("userId", safeUserFields)
-      .lean();
-    res.json(profiles);
-  } catch (err) {
-    console.error("[ADMIN] Plumber list failed:", err.message);
-    res.status(500).json({ message: "Unable to load plumbers." });
-  }
-}
-
-export async function getDashboard(_req, res) {
+// GET /api/admin/dashboard
+export async function getDashboard(req, res) {
   try {
     const [
-      sensorCount, latestSensor, latestPrediction, totalLeaks, leakStatusCounts,
-      pendingPlumbers, proposalCount, activeAssignments, repairsAwaitingVerification,
-      recoveredIncidents, notificationStats,
+      totalSensors,
+      totalPredictions,
+      leakEvents,
+      openForProposals,
+      assigned,
+      inProgress,
+      pendingVerification,
+      recovered,
+      pendingPlumbers,
+      latestPrediction,
+      recentLeaks,
     ] = await Promise.all([
-      Sensor.countDocuments(),
-      Sensor.findOne().sort({ _id: -1 }).lean(),
-      MlPrediction.findOne().sort({ _id: -1 }).lean(),
+      // sensors count
+      (await import("../models/sensor.model.js")).default.countDocuments(),
+      MlPrediction.countDocuments(),
       LeakEvent.countDocuments(),
-      LeakEvent.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]),
-      PlumberProfile.countDocuments({ approvalStatus: "pending" }),
-      RepairProposal.countDocuments({ status: "submitted" }),
-      RepairAssignment.countDocuments({ status: { $in: ["assigned", "accepted", "in_progress"] } }),
-      RepairRecord.countDocuments({ recoveryVerificationStatus: { $in: ["pending", "verifying", "inconclusive"] } }),
+      LeakEvent.countDocuments({ status: "OPEN_FOR_PROPOSALS" }),
+      LeakEvent.countDocuments({ status: "ASSIGNED" }),
+      LeakEvent.countDocuments({ status: "REPAIR_IN_PROGRESS" }),
+      LeakEvent.countDocuments({ status: "REPAIR_REPORTED_COMPLETE" }),
       LeakEvent.countDocuments({ status: "RECOVERED" }),
-      Notification.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]),
+      PlumberProfile.countDocuments({ approvalStatus: "pending" }),
+      MlPrediction.findOne().sort({ _id: -1 }).lean(),
+      LeakEvent.find().sort({ createdAt: -1 }).limit(5).lean(),
     ]);
 
     res.json({
-      counts: {
-        sensors: sensorCount,
-        leakIncidents: totalLeaks,
-        pendingPlumbers,
-        submittedProposals: proposalCount,
-        activeAssignments,
-        repairsAwaitingVerification,
-        recoveredIncidents,
-        leaksByStatus: Object.fromEntries(leakStatusCounts.map(({ _id, count }) => [_id, count])),
-        notifications: Object.fromEntries(notificationStats.map(({ _id, count }) => [_id, count])),
+      sensors: { total: totalSensors, latestPrediction },
+      leaks: {
+        total: leakEvents,
+        openForProposals,
+        assigned,
+        inProgress,
+        pendingVerification,
+        recovered,
       },
-      latestSensor,
-      latestPrediction,
+      plumbers: { pendingApproval: pendingPlumbers },
+      predictions: { total: totalPredictions },
+      recentLeaks,
     });
   } catch (err) {
-    console.error("[ADMIN] Dashboard query failed:", err.message);
-    res.status(500).json({ message: "Unable to load administrator dashboard." });
+    console.error("admin dashboard error:", err);
+    res.status(500).json({ message: "Failed to load dashboard." });
   }
 }
 
-export async function createPlumberInvite(req, res) {
-  let user;
+// GET /api/admin/plumbers
+export async function listPlumbers(req, res) {
   try {
-    const email = req.body.email.trim().toLowerCase();
-    if (await User.exists({ email })) {
-      return res.status(409).json({ message: "An account with this email already exists." });
+    const { status, page = 1, limit = 20 } = req.query;
+    const filter = {};
+    if (status) filter.approvalStatus = status;
+
+    const skip = (Math.max(1, +page) - 1) * Math.min(100, +limit);
+    const [profiles, total] = await Promise.all([
+      PlumberProfile.find(filter)
+        .populate("userId", "name email accountStatus createdAt")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(+limit)
+        .lean(),
+      PlumberProfile.countDocuments(filter),
+    ]);
+
+    res.json({ total, page: +page, limit: +limit, data: profiles });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to list plumbers." });
+  }
+}
+
+// POST /api/admin/plumbers  (admin-registers a trusted plumber by invite)
+export async function registerPlumber(req, res) {
+  try {
+    const { name, email, phone, serviceArea, city, state,
+            serviceRadiusKm, experienceYears, skills } = req.body;
+
+    const existing = await User.findOne({ email });
+    if (existing) {
+      return res.status(409).json({ message: "A user with this email already exists." });
     }
 
-    const inviteToken = randomBytes(32).toString("hex");
-    user = await User.create({
-      name: req.body.name.trim(),
-      email,
-      passwordHash: await User.hashPassword(randomBytes(48).toString("hex")),
+    // Count admin-registered plumbers (trusted initial five limit)
+    const adminRegCount = await PlumberProfile.countDocuments({ isAdminRegistered: true });
+    if (adminRegCount >= 5) {
+      return res.status(400).json({
+        message: "The maximum of 5 admin-registered plumbers has been reached. Additional plumbers can self-register.",
+      });
+    }
+
+    // Create user with a temporary placeholder password — plumber must set their own via invite
+    const tempHash    = await User.hashPassword(crypto.randomBytes(32).toString("hex"));
+    const inviteToken = crypto.randomBytes(32).toString("hex");
+
+    const user = await User.create({
+      name, email,
+      passwordHash: tempHash,
       role: "plumber",
       emailVerified: false,
       accountStatus: "pending",
     });
+
     await PlumberProfile.create({
       userId: user._id,
-      phone: req.body.phone.trim(),
-      businessName: req.body.businessName?.trim() || "",
-      address: req.body.address.trim(),
-      city: req.body.city.trim(),
-      state: req.body.state.trim(),
-      serviceArea: `${req.body.city.trim()}, ${req.body.state.trim()}`,
-      serviceRadiusKm: Number(req.body.serviceRadiusKm),
-      experienceYears: Number(req.body.experienceYears),
-      skills: req.body.skills,
-      workingHours: req.body.workingHours?.trim() || "",
-      approvalStatus: "approved",
-      approvedBy: req.user._id,
-      approvedAt: new Date(),
+      phone: phone || "",
+      serviceArea: serviceArea || "",
+      city: city || "",
+      state: state || "",
+      serviceRadiusKm: serviceRadiusKm || 25,
+      experienceYears: experienceYears || 0,
+      skills: Array.isArray(skills) ? skills : [],
+      approvalStatus: "pending",
       isAdminRegistered: true,
-      inviteToken: hashToken(inviteToken),
+      inviteToken,
       inviteExpires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     });
-    await sendPlumberInvite(email, user.name, inviteToken);
-    await audit(req.user._id, "PLUMBER_INVITED", "User", user._id, {}, req);
-    res.status(201).json({ message: "Plumber invitation sent." });
+
+    try { await sendPlumberInvite(email, name, inviteToken); } catch {}
+
+    await audit(req.user._id, "ADMIN_REGISTERED_PLUMBER", "User", user._id, { email }, req);
+
+    res.status(201).json({ message: "Plumber registered and invitation email sent.", id: user._id });
   } catch (err) {
-    if (user?._id) {
-      await PlumberProfile.deleteOne({ userId: user._id });
-      await User.deleteOne({ _id: user._id });
-    }
-    if (err.code === 11000) return res.status(409).json({ message: "An account with this email already exists." });
-    console.error("[ADMIN] Plumber invitation failed:", err.message);
-    res.status(503).json({ message: "Unable to create and send the plumber invitation. Check email configuration and retry." });
+    console.error("registerPlumber error:", err);
+    res.status(500).json({ message: "Failed to register plumber." });
   }
 }
 
-export async function setPlumberApproval(req, res) {
+// GET /api/admin/plumbers/:id
+export async function getPlumber(req, res) {
   try {
-    const { status, reason = "" } = req.body;
-    const profile = await PlumberProfile.findById(req.params.id);
+    const profile = await PlumberProfile.findById(req.params.id)
+      .populate("userId", "name email accountStatus createdAt lastLoginAt")
+      .lean();
     if (!profile) return res.status(404).json({ message: "Plumber not found." });
-    if (profile.isAdminRegistered) {
-      return res.status(409).json({ message: "Invited plumbers are approved through their invitation." });
-    }
-    if (!["approved", "rejected"].includes(status)) {
-      return res.status(400).json({ message: "Approval status must be approved or rejected." });
-    }
+    res.json(profile);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to get plumber." });
+  }
+}
 
-    profile.approvalStatus = status;
-    profile.approvedBy = status === "approved" ? req.user._id : null;
-    profile.approvedAt = status === "approved" ? new Date() : null;
-    profile.rejectionReason = status === "rejected" ? reason.trim() : "";
-    await profile.save();
-    await User.updateOne(
-      { _id: profile.userId },
-      { $set: { accountStatus: status === "approved" ? "active" : "rejected" } }
-    );
-    const user = await User.findById(profile.userId).select("name email");
-    try {
-      if (status === "approved") await sendPlumberApproved(user);
-      else await sendPlumberRejected(user, reason);
-    } catch (err) {
-      console.error(`[EMAIL] Plumber ${status} notice failed for ${user?.id}: ${err.message}`);
+// PATCH /api/admin/plumbers/:id/approval
+export async function updatePlumberApproval(req, res) {
+  try {
+    const { status, reason } = req.body; // "approved" | "rejected"
+
+    const profile = await PlumberProfile.findById(req.params.id).populate("userId");
+    if (!profile) return res.status(404).json({ message: "Plumber not found." });
+
+    profile.approvalStatus  = status;
+    if (status === "approved") {
+      profile.approvedBy = req.user._id;
+      profile.approvedAt = new Date();
+      profile.userId.accountStatus = "active";
+      await profile.userId.save();
+      try { await sendPlumberApproved(profile.userId); } catch {}
+    } else {
+      profile.rejectionReason = reason || "";
+      profile.userId.accountStatus = "rejected";
+      await profile.userId.save();
+      try { await sendPlumberRejected(profile.userId, reason); } catch {}
     }
+    await profile.save();
+
     await audit(req.user._id, `PLUMBER_${status.toUpperCase()}`, "PlumberProfile", profile._id, { reason }, req);
+
     res.json({ message: `Plumber ${status}.` });
   } catch (err) {
-    console.error("[ADMIN] Plumber approval update failed:", err.message);
-    res.status(500).json({ message: "Unable to update plumber approval." });
+    res.status(500).json({ message: "Failed to update approval." });
   }
 }
 
-export async function setPlumberStatus(req, res) {
+// PATCH /api/admin/plumbers/:id/status
+export async function updatePlumberStatus(req, res) {
   try {
-    const { status } = req.body;
-    const profile = await PlumberProfile.findById(req.params.id);
+    const { status } = req.body; // "active" | "suspended"
+    const profile = await PlumberProfile.findById(req.params.id).populate("userId");
     if (!profile) return res.status(404).json({ message: "Plumber not found." });
-    if (!["approved", "suspended"].includes(profile.approvalStatus)) {
-      return res.status(409).json({ message: "Only approved plumbers can be activated or suspended." });
-    }
-    if (!["active", "suspended"].includes(status)) {
-      return res.status(400).json({ message: "Status must be active or suspended." });
-    }
-    profile.approvalStatus = status === "active" ? "approved" : "suspended";
+
+    profile.userId.accountStatus = status;
+    if (status === "suspended") profile.approvalStatus = "suspended";
+    await profile.userId.save();
     await profile.save();
-    await User.updateOne({ _id: profile.userId }, { $set: { accountStatus: status } });
-    await audit(req.user._id, `PLUMBER_${status.toUpperCase()}`, "PlumberProfile", profile._id, {}, req);
-    res.json({ message: `Plumber account ${status}.` });
+
+    await audit(req.user._id, `PLUMBER_STATUS_${status.toUpperCase()}`, "User", profile.userId._id, {}, req);
+    res.json({ message: `Account ${status}.` });
   } catch (err) {
-    console.error("[ADMIN] Plumber status update failed:", err.message);
-    res.status(500).json({ message: "Unable to update plumber status." });
+    res.status(500).json({ message: "Failed to update status." });
   }
 }
 
+// GET /api/admin/leaks
 export async function listLeaks(req, res) {
   try {
-    const query = {};
-    if (typeof req.query.status === "string") query.status = req.query.status;
-    const leaks = await LeakEvent.find(query)
-      .sort({ createdAt: -1 })
-      .limit(Math.min(Number(req.query.limit) || 50, 200))
-      .populate("predictionRef")
-      .lean();
-    res.json(leaks);
-  } catch (err) {
-    console.error("[ADMIN] Leak list failed:", err.message);
-    res.status(500).json({ message: "Unable to load leak incidents." });
-  }
-}
-
-export async function getLeak(req, res) {
-  try {
-    const leak = await LeakEvent.findById(req.params.id).populate("predictionRef").lean();
-    if (!leak) return res.status(404).json({ message: "Leak incident not found." });
-    res.json(leak);
-  } catch (err) {
-    res.status(err instanceof mongoose.Error.CastError ? 400 : 500).json({
-      message: err instanceof mongoose.Error.CastError ? "Invalid incident ID." : "Unable to load leak incident.",
-    });
-  }
-}
-
-export async function setLeakStatus(req, res) {
-  try {
-    const allowed = new Set([
-      "DETECTED:OPEN_FOR_PROPOSALS",
-      "OPEN_FOR_PROPOSALS:CANCELLED",
-      "RECOVERY_FAILED:VERIFYING_RECOVERY",
-      "AWAITING_INSPECTION:VERIFYING_RECOVERY",
+    const { status, severity, page = 1, limit = 20 } = req.query;
+    const filter = {};
+    if (status)   filter.status   = status;
+    if (severity) filter.severity = severity;
+    const skip = (Math.max(1, +page) - 1) * Math.min(100, +limit);
+    const [data, total] = await Promise.all([
+      LeakEvent.find(filter).sort({ createdAt: -1 }).skip(skip).limit(+limit).lean(),
+      LeakEvent.countDocuments(filter),
     ]);
-    const leak = await LeakEvent.findById(req.params.id);
-    if (!leak) return res.status(404).json({ message: "Leak incident not found." });
-    if (!allowed.has(`${leak.status}:${req.body.status}`)) {
-      return res.status(409).json({ message: "That incident status transition is not allowed." });
-    }
-    leak.status = req.body.status;
-    if (req.body.status === "CANCELLED") leak.activeKey = undefined;
-    leak.statusHistory.push({ status: req.body.status, changedBy: req.user._id, reason: req.body.reason || "" });
-    await leak.save();
-    await audit(req.user._id, "LEAK_STATUS_CHANGED", "LeakEvent", leak._id, { status: leak.status, reason: req.body.reason || "" }, req);
-    res.json(leak);
+    res.json({ total, page: +page, limit: +limit, data });
   } catch (err) {
-    console.error("[ADMIN] Leak status update failed:", err.message);
-    res.status(500).json({ message: "Unable to update leak status." });
+    res.status(500).json({ message: "Failed to list leaks." });
   }
 }
 
-export async function listProposals(req, res) {
+// GET /api/admin/leaks/:id
+export async function getLeakDetail(req, res) {
+  try {
+    const leak = await LeakEvent.findById(req.params.id).lean();
+    if (!leak) return res.status(404).json({ message: "Incident not found." });
+
+    const [proposals, assignment] = await Promise.all([
+      RepairProposal.find({ incidentId: leak._id })
+        .populate("plumberId", "name email")
+        .lean(),
+      RepairAssignment.findOne({ incidentId: leak._id, status: { $ne: "cancelled" } })
+        .populate("plumberId", "name email")
+        .lean(),
+    ]);
+
+    res.json({ leak, proposals, assignment });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to get incident." });
+  }
+}
+
+// PATCH /api/admin/leaks/:id/status
+export async function updateLeakStatus(req, res) {
+  try {
+    const { status, reason } = req.body;
+    const leak = await LeakEvent.findById(req.params.id);
+    if (!leak) return res.status(404).json({ message: "Incident not found." });
+
+    leak.statusHistory.push({ status, changedBy: req.user._id, reason, at: new Date() });
+    leak.status = status;
+    await leak.save();
+
+    await audit(req.user._id, "LEAK_STATUS_UPDATED", "LeakEvent", leak._id, { status, reason }, req);
+    res.json({ message: "Status updated.", status });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to update status." });
+  }
+}
+
+// GET /api/admin/leaks/:id/proposals
+export async function getLeakProposals(req, res) {
   try {
     const proposals = await RepairProposal.find({ incidentId: req.params.id })
-      .sort({ totalEstimatedCharges: 1, createdAt: 1 })
-      .populate("plumberId", safeUserFields)
+      .populate("plumberId", "name email")
+      .sort({ totalEstimatedCharges: 1 })
       .lean();
-    res.json(proposals);
+
+    // Attach plumber profile to each
+    const enriched = await Promise.all(proposals.map(async (p) => {
+      const profile = await PlumberProfile.findOne({ userId: p.plumberId?._id }).lean();
+      return { ...p, plumberProfile: profile };
+    }));
+
+    res.json(enriched);
   } catch (err) {
-    console.error("[ADMIN] Proposal list failed:", err.message);
-    res.status(500).json({ message: "Unable to load proposals." });
+    res.status(500).json({ message: "Failed to get proposals." });
   }
 }
 
-export async function assignProposal(req, res) {
-  const session = await mongoose.startSession();
+// POST /api/admin/leaks/:id/assign
+export async function assignPlumber(req, res) {
   try {
-    let assignment;
-    await session.withTransaction(async () => {
-      const leak = await LeakEvent.findById(req.params.id).session(session);
-      if (!leak || leak.status !== "OPEN_FOR_PROPOSALS") {
-        const error = new Error("Incident is not open for assignment.");
-        error.status = 409;
-        throw error;
-      }
-      const proposal = await RepairProposal.findOne({
-        _id: req.body.proposalId,
-        incidentId: leak._id,
-        status: "submitted",
-      }).session(session);
-      if (!proposal) {
-        const error = new Error("Eligible proposal not found.");
-        error.status = 404;
-        throw error;
-      }
-      const plumber = await User.findOne({
-        _id: proposal.plumberId,
-        role: "plumber",
-        accountStatus: "active",
-      }).session(session);
-      const profile = plumber && await PlumberProfile.findOne({
-        userId: plumber._id,
-        approvalStatus: "approved",
-        availability: "available",
-      }).session(session);
-      if (!profile) {
-        const error = new Error("The proposed plumber is not currently approved and active.");
-        error.status = 409;
-        throw error;
-      }
-      if (proposal.earliestAvailability < new Date()) {
-        const error = new Error("The proposal availability date has expired; request an updated proposal.");
-        error.status = 409;
-        throw error;
-      }
+    const { proposalId } = req.body;
+    const leak = await LeakEvent.findById(req.params.id);
+    if (!leak) return res.status(404).json({ message: "Incident not found." });
 
-      [assignment] = await RepairAssignment.create([{
-        incidentId: leak._id,
-        selectedProposalId: proposal._id,
-        plumberId: proposal.plumberId,
-        assignedBy: req.user._id,
-      }], { session });
-      proposal.status = "selected";
-      await proposal.save({ session });
-      await RepairProposal.updateMany(
-        { incidentId: leak._id, _id: { $ne: proposal._id }, status: "submitted" },
-        { $set: { status: "not_selected" } },
-        { session }
-      );
-      leak.status = "ASSIGNED";
-      leak.statusHistory.push({ status: "ASSIGNED", changedBy: req.user._id, reason: "Proposal selected by administrator." });
-      await leak.save({ session });
-    });
-    await audit(req.user._id, "REPAIR_ASSIGNED", "RepairAssignment", assignment._id, { incidentId: req.params.id }, req);
-    let notificationWarning = null;
-    try {
-      await notifyAssignment(assignment);
-    } catch (err) {
-      notificationWarning = "Assignment completed, but email notification preparation failed.";
-      console.error(`[EMAIL] Assignment notification setup failed for ${assignment._id}: ${err.message}`);
+    if (!["OPEN_FOR_PROPOSALS", "DETECTED"].includes(leak.status)) {
+      return res.status(400).json({ message: "Incident is not available for assignment." });
     }
-    res.status(201).json({ assignment, notificationWarning });
-  } catch (err) {
-    console.error("[ADMIN] Assignment failed:", err.message);
-    res.status(err.status || 500).json({
-      message: err.status ? err.message : "Unable to assign proposal.",
+
+    const proposal = await RepairProposal.findById(proposalId);
+    if (!proposal || proposal.incidentId.toString() !== leak._id.toString()) {
+      return res.status(400).json({ message: "Invalid proposal." });
+    }
+    if (proposal.status !== "submitted") {
+      return res.status(400).json({ message: "Proposal is no longer available." });
+    }
+
+    const plumber = await User.findById(proposal.plumberId);
+    if (!plumber || plumber.accountStatus !== "active") {
+      return res.status(400).json({ message: "Plumber is not active." });
+    }
+
+    // Check for existing active assignment
+    const existing = await RepairAssignment.findOne({
+      incidentId: leak._id,
+      status: { $nin: ["cancelled", "reassigned"] },
     });
-  } finally {
-    await session.endSession();
+    if (existing) {
+      return res.status(409).json({ message: "An active assignment already exists for this incident." });
+    }
+
+    // Create assignment
+    const assignment = await RepairAssignment.create({
+      incidentId: leak._id,
+      selectedProposalId: proposal._id,
+      plumberId: plumber._id,
+      assignedBy: req.user._id,
+    });
+
+    // Mark selected proposal
+    proposal.status = "selected";
+    await proposal.save();
+
+    // Mark all other proposals as not_selected
+    await RepairProposal.updateMany(
+      { incidentId: leak._id, _id: { $ne: proposal._id }, status: "submitted" },
+      { $set: { status: "not_selected" } }
+    );
+
+    // Update leak status
+    leak.status = "ASSIGNED";
+    leak.statusHistory.push({ status: "ASSIGNED", changedBy: req.user._id, at: new Date() });
+    await leak.save();
+
+    // Notifications
+    try { await sendProposalSelected(plumber, leak, proposal); } catch {}
+
+    // Notify other plumbers (no price info shared)
+    const otherProposals = await RepairProposal.find({
+      incidentId: leak._id,
+      status: "not_selected",
+    }).populate("plumberId", "name email");
+    for (const op of otherProposals) {
+      try { await sendProposalNotSelected(op.plumberId, leak); } catch {}
+    }
+
+    await audit(req.user._id, "PLUMBER_ASSIGNED", "LeakEvent", leak._id, {
+      proposalId: proposal._id,
+      plumberId: plumber._id,
+    }, req);
+
+    res.json({ message: "Plumber assigned successfully.", assignment });
+  } catch (err) {
+    console.error("assignPlumber error:", err);
+    res.status(500).json({ message: "Assignment failed." });
   }
 }
 
-export async function reassignAssignment(req, res) {
-  const session = await mongoose.startSession();
+// POST /api/admin/assignments/:id/reassign
+export async function reassignPlumber(req, res) {
   try {
-    let replacement;
-    await session.withTransaction(async () => {
-      const current = await RepairAssignment.findById(req.params.id).session(session);
-      if (!current || !["assigned", "accepted", "in_progress"].includes(current.status)) {
-        const error = new Error("No active assignment is available to reassign.");
-        error.status = 404;
-        throw error;
-      }
-      const leak = await LeakEvent.findById(current.incidentId).session(session);
-      if (!leak || ["RECOVERED", "CANCELLED"].includes(leak.status)) {
-        const error = new Error("Incident is not eligible for reassignment.");
-        error.status = 409;
-        throw error;
-      }
-      const proposal = await RepairProposal.findOne({
-        _id: req.body.proposalId,
-        incidentId: leak._id,
-        status: { $in: ["submitted", "not_selected"] },
-      }).session(session);
-      if (!proposal || String(proposal.plumberId) === String(current.plumberId)) {
-        const error = new Error("A different eligible proposal is required.");
-        error.status = 409;
-        throw error;
-      }
-      const profile = await PlumberProfile.findOne({
-        userId: proposal.plumberId,
-        approvalStatus: "approved",
-        availability: "available",
-      }).session(session);
-      if (!profile) {
-        const error = new Error("The replacement plumber is not approved and available.");
-        error.status = 409;
-        throw error;
-      }
-      await RepairProposal.updateOne(
-        { _id: current.selectedProposalId, status: "selected" },
-        { $set: { status: "not_selected" } },
-        { session }
-      );
+    const { reason } = req.body;
+    const assignment = await RepairAssignment.findById(req.params.id);
+    if (!assignment) return res.status(404).json({ message: "Assignment not found." });
 
-      current.status = "reassigned";
-      current.reassignmentReason = req.body.reason.trim();
-      current.statusHistory.push({
-        status: "reassigned",
-        changedBy: req.user._id,
-        reason: req.body.reason.trim(),
-      });
-      await current.save({ session });
-      [replacement] = await RepairAssignment.create([{
-        incidentId: leak._id,
-        selectedProposalId: proposal._id,
-        plumberId: proposal.plumberId,
-        assignedBy: req.user._id,
-        reassignmentReason: req.body.reason.trim(),
-      }], { session });
-      proposal.status = "selected";
-      await proposal.save({ session });
-      await RepairProposal.updateMany(
-        { incidentId: leak._id, _id: { $ne: proposal._id }, status: "submitted" },
-        { $set: { status: "not_selected" } },
-        { session }
-      );
-      leak.status = "ASSIGNED";
-      leak.statusHistory.push({ status: "ASSIGNED", changedBy: req.user._id, reason: req.body.reason.trim() });
-      await leak.save({ session });
-    });
-    await audit(req.user._id, "REPAIR_REASSIGNED", "RepairAssignment", replacement._id, { reason: req.body.reason }, req);
-    let notificationWarning = null;
-    try {
-      await notifyAssignment(replacement);
-    } catch (err) {
-      notificationWarning = "Reassignment completed, but email notification preparation failed.";
-      console.error(`[EMAIL] Reassignment notification setup failed for ${replacement._id}: ${err.message}`);
+    assignment.status = "reassigned";
+    assignment.reassignmentReason = reason;
+    assignment.statusHistory.push({ status: "reassigned", changedBy: req.user._id, reason, at: new Date() });
+    await assignment.save();
+
+    // Re-open the leak
+    const leak = await LeakEvent.findById(assignment.incidentId);
+    if (leak) {
+      leak.status = "OPEN_FOR_PROPOSALS";
+      leak.statusHistory.push({ status: "OPEN_FOR_PROPOSALS", changedBy: req.user._id, reason, at: new Date() });
+      await leak.save();
     }
-    res.status(201).json({ assignment: replacement, notificationWarning });
+
+    await audit(req.user._id, "ASSIGNMENT_REASSIGNED", "RepairAssignment", assignment._id, { reason }, req);
+    res.json({ message: "Assignment cancelled. Incident reopened for proposals." });
   } catch (err) {
-    console.error("[ADMIN] Reassignment failed:", err.message);
-    res.status(err.status || 500).json({
-      message: err.status ? err.message : "Unable to reassign repair.",
-    });
-  } finally {
-    await session.endSession();
+    res.status(500).json({ message: "Reassignment failed." });
   }
 }
 
+// GET /api/admin/assignments
 export async function listAssignments(req, res) {
   try {
-    const assignments = await RepairAssignment.find()
-      .sort({ createdAt: -1 })
-      .limit(Math.min(Number(req.query.limit) || 50, 200))
-      .populate("incidentId")
-      .populate("plumberId", safeUserFields)
-      .populate("selectedProposalId")
-      .lean();
-    res.json(assignments);
+    const { status, page = 1, limit = 20 } = req.query;
+    const filter = {};
+    if (status) filter.status = status;
+    const skip = (Math.max(1, +page) - 1) * Math.min(100, +limit);
+    const [data, total] = await Promise.all([
+      RepairAssignment.find(filter)
+        .populate("plumberId", "name email")
+        .populate("incidentId", "incidentId severity status")
+        .sort({ createdAt: -1 })
+        .skip(skip).limit(+limit).lean(),
+      RepairAssignment.countDocuments(filter),
+    ]);
+    res.json({ total, page: +page, limit: +limit, data });
   } catch (err) {
-    console.error("[ADMIN] Assignment list failed:", err.message);
-    res.status(500).json({ message: "Unable to load assignments." });
+    res.status(500).json({ message: "Failed to list assignments." });
   }
 }
 
-export async function auditLogs(req, res) {
+// GET /api/admin/audit-logs
+export async function getAuditLogs(req, res) {
   try {
-    const entries = await AuditLog.find()
-      .sort({ createdAt: -1 })
-      .limit(Math.min(Number(req.query.limit) || 100, 500))
-      .populate("actorUserId", "name email role")
-      .lean();
-    res.json(entries);
+    const { page = 1, limit = 50 } = req.query;
+    const skip = (Math.max(1, +page) - 1) * Math.min(200, +limit);
+    const [data, total] = await Promise.all([
+      AuditLog.find().sort({ createdAt: -1 }).skip(skip).limit(+limit)
+        .populate("actorUserId", "name email role").lean(),
+      AuditLog.countDocuments(),
+    ]);
+    res.json({ total, page: +page, limit: +limit, data });
   } catch (err) {
-    console.error("[ADMIN] Audit log retrieval failed:", err.message);
-    res.status(500).json({ message: "Unable to load audit logs." });
-  }
-}
-
-export async function acceptPlumberInvite(req, res) {
-  try {
-    const tokenHash = hashToken(req.body.token);
-    const profile = await PlumberProfile.findOne({
-      inviteToken: tokenHash,
-      inviteExpires: { $gt: new Date() },
-      isAdminRegistered: true,
-    });
-    if (!profile) return res.status(400).json({ message: "Invitation is invalid or expired." });
-
-    const user = await User.findById(profile.userId);
-    if (!user || !user.email) return res.status(400).json({ message: "Invitation account is unavailable." });
-    user.passwordHash = await User.hashPassword(req.body.password);
-    user.emailVerified = true;
-    user.accountStatus = "active";
-    user.tokenVersion += 1;
-    await user.save();
-    profile.inviteToken = null;
-    profile.inviteExpires = null;
-    await profile.save();
-    res.json({ message: "Invitation accepted. You can now sign in." });
-  } catch (err) {
-    console.error("[AUTH] Invitation acceptance failed:", err.message);
-    res.status(500).json({ message: "Unable to accept invitation." });
+    res.status(500).json({ message: "Failed to get audit logs." });
   }
 }

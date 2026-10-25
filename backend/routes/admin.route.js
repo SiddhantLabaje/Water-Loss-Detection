@@ -1,89 +1,79 @@
 import { Router } from "express";
-import { body, param, query } from "express-validator";
+import { body, param } from "express-validator";
 import { authenticate, requireAdmin } from "../middleware/auth.middleware.js";
 import { validate } from "../middleware/validate.middleware.js";
 import {
-  assignProposal,
-  auditLogs,
-  createPlumberInvite,
   getDashboard,
-  getLeak,
-  listAssignments,
-  listLeaks,
   listPlumbers,
-  listProposals,
-  reassignAssignment,
-  setLeakStatus,
-  setPlumberApproval,
-  setPlumberStatus,
+  registerPlumber,
+  getPlumber,
+  updatePlumberApproval,
+  updatePlumberStatus,
+  listLeaks,
+  getLeakDetail,
+  updateLeakStatus,
+  getLeakProposals,
+  assignPlumber,
+  reassignPlumber,
+  listAssignments,
+  getAuditLogs,
 } from "../controllers/admin.controller.js";
-import { verifyRecovery } from "../controllers/plumber.controller.js";
 
 const router = Router();
 router.use(authenticate, requireAdmin);
 
+// Dashboard
 router.get("/dashboard", getDashboard);
-router.get("/plumbers", query("status").optional().isIn(["pending", "approved", "rejected", "suspended"]), validate, listPlumbers);
-router.post(
-  "/plumbers",
-  body("name").isString().trim().isLength({ min: 2, max: 100 }),
-  body("email").isEmail().normalizeEmail(),
-  body("phone").isString().trim().isLength({ min: 7, max: 30 }),
-  body("address").isString().trim().isLength({ min: 3, max: 200 }),
-  body("city").isString().trim().isLength({ min: 2, max: 100 }),
-  body("state").isString().trim().isLength({ min: 2, max: 100 }),
-  body("serviceRadiusKm").isFloat({ min: 1, max: 500 }),
-  body("experienceYears").isInt({ min: 0, max: 80 }),
-  body("skills").isArray({ min: 1, max: 20 }),
-  body("skills.*").isString().trim().isLength({ min: 2, max: 60 }),
-  body("businessName").optional().isString().trim().isLength({ max: 120 }),
-  body("workingHours").optional().isString().trim().isLength({ max: 200 }),
+
+// Plumber management
+router.get("/plumbers", listPlumbers);
+router.post("/plumbers",
+  [
+    body("name").trim().notEmpty(),
+    body("email").isEmail().normalizeEmail(),
+    body("phone").trim().notEmpty(),
+    body("serviceArea").trim().notEmpty(),
+    body("experienceYears").isInt({ min: 0 }),
+  ],
   validate,
-  createPlumberInvite
+  registerPlumber
 );
-router.patch(
-  "/plumbers/:id/approval",
-  param("id").isMongoId(),
-  body("status").isIn(["approved", "rejected"]),
-  body("reason").optional().isString().trim().isLength({ max: 500 }),
+router.get("/plumbers/:id", [param("id").isMongoId()], validate, getPlumber);
+router.patch("/plumbers/:id/approval",
+  [param("id").isMongoId(), body("status").isIn(["approved", "rejected"])],
   validate,
-  setPlumberApproval
+  updatePlumberApproval
 );
-router.patch(
-  "/plumbers/:id/status",
-  param("id").isMongoId(),
-  body("status").isIn(["active", "suspended"]),
+router.patch("/plumbers/:id/status",
+  [param("id").isMongoId(), body("status").isIn(["active", "suspended"])],
   validate,
-  setPlumberStatus
+  updatePlumberStatus
 );
-router.get("/leaks", query("limit").optional().isInt({ min: 1, max: 200 }), validate, listLeaks);
-router.get("/leaks/:id", param("id").isMongoId(), validate, getLeak);
-router.patch(
-  "/leaks/:id/status",
-  param("id").isMongoId(),
-  body("status").isIn(["OPEN_FOR_PROPOSALS", "CANCELLED", "VERIFYING_RECOVERY"]),
-  body("reason").optional().isString().trim().isLength({ max: 500 }),
+
+// Leak management
+router.get("/leaks", listLeaks);
+router.get("/leaks/:id", [param("id").isMongoId()], validate, getLeakDetail);
+router.patch("/leaks/:id/status",
+  [param("id").isMongoId(), body("status").notEmpty()],
   validate,
-  setLeakStatus
+  updateLeakStatus
 );
-router.get("/leaks/:id/proposals", param("id").isMongoId(), validate, listProposals);
-router.post(
-  "/leaks/:id/assign",
-  param("id").isMongoId(),
-  body("proposalId").isMongoId(),
+router.get("/leaks/:id/proposals", [param("id").isMongoId()], validate, getLeakProposals);
+router.post("/leaks/:id/assign",
+  [param("id").isMongoId(), body("proposalId").isMongoId()],
   validate,
-  assignProposal
+  assignPlumber
 );
-router.post("/leaks/:id/verify-recovery", param("id").isMongoId(), validate, verifyRecovery);
-router.get("/assignments", query("limit").optional().isInt({ min: 1, max: 200 }), validate, listAssignments);
-router.post(
-  "/assignments/:id/reassign",
-  param("id").isMongoId(),
-  body("proposalId").isMongoId(),
-  body("reason").isString().trim().isLength({ min: 5, max: 500 }),
+
+// Assignment management
+router.get("/assignments", listAssignments);
+router.post("/assignments/:id/reassign",
+  [param("id").isMongoId(), body("reason").trim().notEmpty()],
   validate,
-  reassignAssignment
+  reassignPlumber
 );
-router.get("/audit-logs", query("limit").optional().isInt({ min: 1, max: 500 }), validate, auditLogs);
+
+// Audit logs
+router.get("/audit-logs", getAuditLogs);
 
 export default router;
