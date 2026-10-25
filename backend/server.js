@@ -13,14 +13,20 @@ async function startServer() {
       process.env.JWT_SECRET.toLowerCase().includes("replace_with")) {
     throw new Error("JWT_SECRET must be configured with at least 32 characters.");
   }
-  await connectDatabase();
-  await import("./services/cronJob.service.js");
-  await import("./services/keepAlive.service.js");
-  await startBroadcaster();
 
-  app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
+  const server = app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server is listening on port ${PORT}`);
   });
+
+  try {
+    await connectDatabase();
+    await import("./services/cronJob.service.js");
+    await import("./services/keepAlive.service.js");
+    await startBroadcaster();
+  } catch (err) {
+    server.close();
+    throw err;
+  }
 }
 
 startServer().catch((err) => {
