@@ -301,7 +301,7 @@ async function loadLeaks() {
           <div class="sb-unit">Tank level (%)</div>
         </div>
         <div class="sensor-box" style="${sev==='HIGH'?'border-color:var(--danger-bd);background:var(--danger-bg)':''}">
-          <div class="sb-val" style="${sev==='HIGH'?'color:var(--danger)':''}">${esc(ss.waterLossRate!=null?ss.waterLossRate.toFixed?.(2):ss.waterLossRate:'0.00')}</div>
+          <div class="sb-val" style="${sev==='HIGH'?'color:var(--danger)':''}">${esc(ss.waterLossRate!=null?ss.waterLossRate.toFixed?.(2):'0.00')}</div>
           <div class="sb-unit">Water loss (L/hr)</div>
         </div>
       </div>
