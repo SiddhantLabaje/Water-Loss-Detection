@@ -25,6 +25,21 @@
   <header class="topbar"><div class="topbar-left"><h1>Administration</h1><p>Manage plumbers, leak incidents, proposals and email alerts.</p></div><button id="refresh" class="btn">Refresh</button></header>
   <div class="content">
     <section><div class="sec-header"><span class="sec-title">System overview</span></div><div id="metrics" class="g3"><div class="card loading">Loading overview…</div></div><p id="sensor-status" class="metric-sub" style="margin-top:10px"></p></section>
+
+    <!-- ── Critical alert banner — shown when open leaks exist ── -->
+    <section id="critical-banner" hidden>
+      <div class="card" style="border-left:4px solid var(--danger,#dc2626);background:#fef2f2;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+          <div>
+            <strong style="color:var(--danger,#dc2626)">🚨 Active leak incidents require attention</strong>
+            <p class="muted" style="margin-top:4px;margin-bottom:0" id="critical-banner-text"></p>
+          </div>
+          <button class="btn" onclick="document.getElementById('leak-filter').value='OPEN_FOR_PROPOSALS';loadLeaks().then(()=>document.getElementById('leaks').scrollIntoView({behavior:'smooth'}))">
+            View &amp; assign plumbers →
+          </button>
+        </div>
+      </div>
+    </section>
     <section><div class="sec-header"><span class="sec-title">Critical email recipient</span></div><div class="card">
       <p class="muted" style="margin-bottom:12px">Owner notification address. SMTP credentials must also be configured on the server.</p>
       <form id="owner-form" class="form-grid"><label>Owner name<input name="ownerName" required maxlength="100"></label><label>Owner email<input name="ownerEmail" type="email" required maxlength="254"></label><button class="btn wide" type="submit">Save notification recipient</button></form>
@@ -43,12 +58,13 @@
       </form><p id="invite-message" class="status-message small" role="status"></p>
     </div></section>
     <section><div class="sec-header"><span class="sec-title">Plumber approvals</span><select id="plumber-filter" aria-label="Filter plumbers"><option value="pending">Pending approval</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="suspended">Suspended</option></select></div><div id="plumbers" class="stack"><div class="card loading">Loading plumbers…</div></div></section>
-    <section><div class="sec-header"><span class="sec-title">Leak incidents and proposals</span><select id="leak-filter" aria-label="Filter leak incidents"><option value="">All incidents</option><option>OPEN_FOR_PROPOSALS</option><option>ASSIGNED</option><option>REPAIR_IN_PROGRESS</option><option>VERIFYING_RECOVERY</option><option>RECOVERED</option></select></div><div id="leaks" class="stack"><div class="card loading">Loading incidents…</div></div></section>
+    <section><div class="sec-header"><span class="sec-title">Leak incidents and proposals</span><select id="leak-filter" aria-label="Filter leak incidents"><option value="OPEN_FOR_PROPOSALS">Open for proposals</option><option value="">All incidents</option><option>ASSIGNED</option><option>REPAIR_IN_PROGRESS</option><option>VERIFYING_RECOVERY</option><option>RECOVERED</option><option>DETECTED</option></select></div><div id="leaks" class="stack"><div class="card loading">Loading incidents…</div></div></section>
     <section><div class="sec-header"><span class="sec-title">Active assignments</span></div><div id="assignments" class="stack"></div></section>
     <section><div class="sec-header"><span class="sec-title">Audit activity</span></div><div id="audit-logs" class="stack"></div></section>
     <p id="page-message" class="status-message" role="status" aria-live="polite"></p>
   </div>
 </main>
+<script src="/stream.js"></script>
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
@@ -77,9 +93,19 @@ async function loadDashboard() {
     ['Active assignments',counts.activeAssignments],['Awaiting verification',counts.repairsAwaitingVerification],
     ['Recovered incidents',counts.recoveredIncidents],
   ];
-  $('metrics').innerHTML=cards.map(([label,value])=>`<div class="kpi-card"><div class="kpi-label">${esc(label)}</div><div class="kpi-value">${esc(value)}</div></div>`).join('');
-  const sensor=data.latestSensor, prediction=data.latestPrediction;
-  $('sensor-status').textContent=`Last sensor reading: ${sensor?.updatedAt ? new Date(sensor.updatedAt).toLocaleString() : 'not available'} · Last prediction: ${prediction?.mlProcessedAt ? new Date(prediction.mlProcessedAt).toLocaleString() : 'not available'} · Current status: ${prediction?.overallSystemStatus || 'UNKNOWN'}`;
+  $('metrics').innerHTML=cards.map(([label,value])=>`<div class="kpi-card"><div class="kpi-label">${esc(label)}</div><div class="kpi-value">${esc(value??'—')}</div></div>`).join('');
+  const prediction=data.latestPrediction;
+  $('sensor-status').textContent=`Last prediction: ${prediction?.mlProcessedAt ? new Date(prediction.mlProcessedAt).toLocaleString() : 'not available'} · Current status: ${prediction?.overallSystemStatus || 'UNKNOWN'}`;
+
+  // Show critical banner if any leaks are open for proposals
+  const openCount = data.leaks?.openForProposals || 0;
+  const criticalBanner = $('critical-banner');
+  if (openCount > 0) {
+    criticalBanner.hidden = false;
+    $('critical-banner-text').textContent = `${openCount} incident${openCount>1?'s are':' is'} open for proposals — assign a plumber to begin repair.`;
+  } else {
+    criticalBanner.hidden = true;
+  }
 }
 async function loadRecipient() {
   const response=await fetch('/api/notifications/settings',{credentials:'same-origin'});
@@ -106,19 +132,30 @@ async function loadLeaks() {
   const status=$('leak-filter').value;
   const result=await api(`/admin/leaks?limit=100${status?'&status='+encodeURIComponent(status):''}`);
   const leaks=result.data||result;
-  $('leaks').innerHTML=leaks.length?leaks.map(leak=>`<article class="record">
-    <div class="record-head"><div><h3>${esc(leak.incidentId)} · ${esc(leak.severity)}</h3><div class="metric-sub">Detected ${esc(leak.sensorSnapshot?.detectedAt ? new Date(leak.sensorSnapshot.detectedAt).toLocaleString() : 'unknown')} · ${esc(leak.status)}</div>
-    <div>Flow ${esc(leak.sensorSnapshot?.flowSensorData)} L/min · Pressure ${esc(leak.sensorSnapshot?.pressureSensorData)} PSI · Estimated loss ${esc(leak.sensorSnapshot?.waterLossRate)} L/hr</div></div>
-    <span class="badge">${esc(leak.status)}</span></div><div class="actions">
-    ${leak.status==='DETECTED'?button('Open for proposals','open',leak._id):''}
-    ${leak.status==='OPEN_FOR_PROPOSALS'?button('Compare proposals','proposals',leak._id):''}
-    ${leak.status==='VERIFYING_RECOVERY'?button('Verify recovery','verify',leak._id):''}
-    ${leak.status==='RECOVERY_FAILED'?button('Retry recovery check','retry-verification',leak._id):''}
-    ${leak.status==='OPEN_FOR_PROPOSALS'?button('Cancel incident','cancel',leak._id):''}
-    </div><div id="proposal-${esc(leak._id)}"></div></article>`).join(''):'<div class="card empty-state">No incidents found.</div>';
+  $('leaks').innerHTML=leaks.length?leaks.map(leak=>{
+    const isOpen=leak.status==='OPEN_FOR_PROPOSALS';
+    const isCritical=leak.severity==='HIGH'||leak.overallSystemStatus==='CRITICAL';
+    const borderStyle=isOpen&&isCritical?'border-left:4px solid var(--danger,#dc2626)':isOpen?'border-left:4px solid #f59e0b':'';
+    return `<article class="record" style="${borderStyle}">
+    <div class="record-head"><div>
+      <h3>${esc(leak.incidentId)} · <span style="color:${leak.severity==='HIGH'?'var(--danger,#dc2626)':leak.severity==='MEDIUM'?'#f59e0b':'var(--muted)'}">${esc(leak.severity)}</span> severity</h3>
+      <div class="metric-sub">Detected ${esc(leak.sensorSnapshot?.detectedAt ? new Date(leak.sensorSnapshot.detectedAt).toLocaleString() : 'unknown')}</div>
+      <div>Flow <strong>${esc(leak.sensorSnapshot?.flowSensorData)}</strong> L/min · Pressure <strong>${esc(leak.sensorSnapshot?.pressureSensorData)}</strong> PSI · Water loss <strong>${esc(leak.sensorSnapshot?.waterLossRate)}</strong> L/hr</div>
+    </div>
+    <span class="badge" style="${isOpen?'background:#fef3c7;color:#92400e;':''}">${esc(leak.status)}</span></div>
+    <div class="actions">
+      ${leak.status==='DETECTED'?button('Open for proposals','open',leak._id):''}
+      ${isOpen?`<button class="btn" data-action="proposals" data-id="${esc(leak._id)}" style="background:var(--primary);color:#fff">🔧 Compare proposals &amp; assign plumber</button>`:''}
+      ${leak.status==='VERIFYING_RECOVERY'?button('Verify recovery','verify',leak._id):''}
+      ${leak.status==='RECOVERY_FAILED'?button('Retry recovery check','retry-verification',leak._id):''}
+      ${isOpen?button('Cancel incident','cancel',leak._id):''}
+    </div>
+    <div id="proposal-${esc(leak._id)}"></div></article>`;
+  }).join(''):'<div class="card empty-state">No incidents found.</div>';
 }
 async function loadAssignments() {
-  const items=await api('/admin/assignments?limit=100');
+  const result=await api('/admin/assignments?limit=100');
+  const items=result.data||result;
   $('assignments').innerHTML=items.length?items.map(item=>`<article class="record"><strong>${esc(item.incidentId?.incidentId||'Incident')}</strong> · ${esc(item.status)}<div>${esc(item.plumberId?.name)} · ${esc(item.selectedProposalId?.totalEstimatedCharges)} estimated</div></article>`).join(''):'<div class="card empty-state">No assignments.</div>';
 }
 async function loadAudit() {
@@ -150,9 +187,12 @@ $('invite-form').addEventListener('submit',async event=>{
 $('plumbers').addEventListener('click',async event=>{
   const b=event.target.closest('button[data-action]');if(!b)return;b.disabled=true;
   try{
-    if(b.dataset.action==='approve'||b.dataset.action==='reject')await api(`/admin/plumbers/${b.dataset.id}/approval`,{method:'PATCH',body:JSON.stringify({status:b.dataset.action==='approve'?'approved':'rejected'})});
-    else await api(`/admin/plumbers/${b.dataset.id}/status`,{method:'PATCH',body:JSON.stringify({status:b.dataset.action==='suspend'?'suspended':'active'})});
-    await loadPlumbers();await loadDashboard();
+    let result;
+    if(b.dataset.action==='approve'||b.dataset.action==='reject')result=await api(`/admin/plumbers/${b.dataset.id}/approval`,{method:'PATCH',body:JSON.stringify({status:b.dataset.action==='approve'?'approved':'rejected'})});
+    else result=await api(`/admin/plumbers/${b.dataset.id}/status`,{method:'PATCH',body:JSON.stringify({status:b.dataset.action==='suspend'?'suspended':'active'})});
+    message('page-message',result.message,true);
+    loadPlumbers().catch(error=>message('page-message',`Updated successfully, but the plumber list could not refresh: ${error.message}`));
+    loadDashboard().catch(error=>message('page-message',`Updated successfully, but dashboard counts could not refresh: ${error.message}`));
   }catch(error){message('page-message',error.message);}finally{b.disabled=false;}
 });
 $('leak-filter').addEventListener('change',()=>loadLeaks().catch(error=>message('page-message',error.message)));
@@ -184,6 +224,13 @@ $('leaks').addEventListener('click',async event=>{
 });
 $('refresh').addEventListener('click',refresh);
 $('logout').addEventListener('click',async()=>{await fetch('/api/auth/logout',{method:'POST',credentials:'same-origin'});location.replace('/login.html');});
+
+// Live updates via SSE — refresh leaks and dashboard when a new snapshot arrives
+window.addEventListener('wm:snapshot', () => {
+  loadLeaks().catch(()=>{});
+  loadDashboard().catch(()=>{});
+});
+
 refresh();
 </script>
 </body>

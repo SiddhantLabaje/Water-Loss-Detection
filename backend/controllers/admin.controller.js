@@ -184,19 +184,26 @@ export async function updatePlumberApproval(req, res) {
       profile.approvedAt = new Date();
       profile.userId.accountStatus = "active";
       await profile.userId.save();
-      try { await sendPlumberApproved(profile.userId); } catch {}
     } else {
       profile.rejectionReason = reason || "";
       profile.userId.accountStatus = "rejected";
       await profile.userId.save();
-      try { await sendPlumberRejected(profile.userId, reason); } catch {}
     }
     await profile.save();
 
     await audit(req.user._id, `PLUMBER_${status.toUpperCase()}`, "PlumberProfile", profile._id, { reason }, req);
 
     res.json({ message: `Plumber ${status}.` });
+    setImmediate(() => {
+      const sendNotification = status === "approved"
+        ? sendPlumberApproved(profile.userId)
+        : sendPlumberRejected(profile.userId, reason);
+      sendNotification.catch((err) => {
+        console.error(`[EMAIL] Failed to send plumber ${status} notification:`, err.message);
+      });
+    });
   } catch (err) {
+    console.error("updatePlumberApproval error:", err);
     res.status(500).json({ message: "Failed to update approval." });
   }
 }
