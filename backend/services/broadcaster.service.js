@@ -198,17 +198,31 @@ export async function getInitialSnapshot() {
 }
 
 export async function startBroadcaster() {
+  // On startup, scan ALL existing leak predictions that don't yet have
+  // a LeakEvent — this handles the case where the server restarted and
+  // predictions arrived while it was down.
+  const leakPredictions = await MlPrediction.find({ mlPredictionData: 1 })
+    .sort({ _id: 1 })
+    .lean();
+
+  for (const prediction of leakPredictions) {
+    try {
+      await createOrUpdateLeakEvent(prediction);
+    } catch (err) {
+      console.error(`[LEAK] Startup: failed to process prediction ${prediction._id}: ${err.message}`);
+    }
+  }
+
+  // Set lastSeenId to the very latest prediction so the poll loop
+  // only looks at NEW predictions from this point forward.
   const latest = await MlPrediction.findOne()
     .sort({ _id: -1 })
-    .select('_id overallSystemStatus mlPredictionData mlProbability mlSeverity flowSensorData pressureSensorData tankLevelSensorData turbiditySensorData waterLossRate mlProcessedAt')
+    .select('_id overallSystemStatus')
     .lean();
 
   if (latest) {
-    lastSeenId = latest._id.toString();
+    lastSeenId       = latest._id.toString();
     lastSystemStatus = latest.overallSystemStatus;
-    if (latest.mlPredictionData === 1) {
-      await createOrUpdateLeakEvent(latest);
-    }
   }
 
   setInterval(tick, 5000);

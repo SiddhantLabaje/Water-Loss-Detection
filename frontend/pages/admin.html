@@ -159,15 +159,29 @@ async function loadAssignments() {
   $('assignments').innerHTML=items.length?items.map(item=>`<article class="record"><strong>${esc(item.incidentId?.incidentId||'Incident')}</strong> · ${esc(item.status)}<div>${esc(item.plumberId?.name)} · ${esc(item.selectedProposalId?.totalEstimatedCharges)} estimated</div></article>`).join(''):'<div class="card empty-state">No assignments.</div>';
 }
 async function loadAudit() {
-  const rows=await api('/admin/audit-logs?limit=20');
+  const result=await api('/admin/audit-logs?limit=20');
+  const rows=result.data||result;
   $('audit-logs').innerHTML=rows.length?rows.map(row=>`<article class="record"><strong>${esc(row.action)}</strong> · ${esc(row.entityType)} ${esc(row.entityId)}<div class="metric-sub">${esc(row.actorUserId?.name||'System')} · ${esc(new Date(row.createdAt).toLocaleString())}</div></article>`).join(''):'<div class="card empty-state">No audit entries.</div>';
 }
 async function refresh() {
   $('page-message').textContent='Loading…';
   try {
     if(!await loadUser())return;
-    await Promise.all([loadDashboard(),loadRecipient(),loadPlumbers(),loadLeaks(),loadAssignments(),loadAudit()]);
-    $('page-message').textContent='';
+    // Load all sections independently so one failure doesn't block others
+    const results = await Promise.allSettled([
+      loadDashboard(),
+      loadRecipient(),
+      loadPlumbers(),
+      loadLeaks(),
+      loadAssignments(),
+      loadAudit(),
+    ]);
+    const failed = results.filter(r=>r.status==='rejected').map(r=>r.reason?.message);
+    if(failed.length) {
+      message('page-message', 'Some sections failed to load: ' + failed.join('; '));
+    } else {
+      $('page-message').textContent='';
+    }
   } catch(error) {
     if(error.message.includes('Authentication required')||error.message.includes('Invalid token')) { location.replace('/login.html'); return; }
     message('page-message',error.message);
