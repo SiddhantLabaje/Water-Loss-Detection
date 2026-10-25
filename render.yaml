@@ -19,11 +19,6 @@ services:
         value: "3445219"
       - key: READ_API_KEY
         value: 6PILE5SJIDU76BGD
-      - key: EMAIL_USER
-        value: labajesiddhant07@gmail.com
-      - key: EMAIL_PASS
-        sync: false   # paste manually in Render dashboard (keep app passwords private)
-
   - type: worker
     name: water-loss-ml-pipeline
     runtime: python

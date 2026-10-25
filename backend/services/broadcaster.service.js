@@ -4,20 +4,13 @@
  * Polls the database every 5 seconds and:
  *  1. Pushes a full "snapshot" SSE event to all connected browser clients
  *     whenever the latest prediction document ID changes.
- *  2. Auto-sends an alert email when a new leak prediction arrives
- *     AND the saved email settings have alertOnCritical = true.
  */
 
 import MlPrediction    from '../models/mlPrediction.model.js';
 import DashboardAnalytics from '../models/dashboardAnalytics.model.js';
-import EmailSettings   from '../models/emailSettings.model.js';
 import { broadcast, clientCount } from './sse.service.js';
-import { sendDashboardReport } from './email.service.js';
 
 let lastSeenId        = null;   // _id of the last prediction we processed
-let lastAlertedId     = null;   // _id of the last prediction we emailed about
-let emailCooldownUntil = 0;     // timestamp — prevents spam if alerts fire rapidly
-let startupAlertDone  = false;  // tracks whether we checked for an active alert on boot
 
 /**
  * Collect all data needed for a full dashboard snapshot in one shot.
@@ -69,8 +62,7 @@ async function buildSnapshot() {
 }
 
 /**
- * Check for a new prediction, broadcast SSE snapshot, and fire an alert email
- * if a leak is detected and alertOnCritical is enabled.
+ * Check for a new prediction and broadcast an SSE snapshot.
  */
 async function tick() {
   try {
@@ -82,9 +74,7 @@ async function tick() {
 
     const currentId    = latest._id.toString();
     const isNew        = currentId !== lastSeenId;
-    const isLeak = latest.mlPredictionData === 1;
 
-    // ── 1. SSE broadcast ────────────────────────────────────────────────────
     if (isNew) {
       lastSeenId = currentId;
       if (clientCount() > 0) {
@@ -93,48 +83,6 @@ async function tick() {
         console.log(`[SSE] Broadcasted snapshot to ${clientCount()} client(s) — new prediction ${currentId}`);
       }
     }
-
-    // ── 2. Auto alert email ─────────────────────────────────────────────────
-    // Fire when:
-    //   a) A brand-new leak prediction arrived (isNew), OR
-    //   b) On the first tick after startup if the latest record is already
-    //      a leak and hasn't been alerted yet (!startupAlertDone)
-    const shouldCheckAlert = isNew || !startupAlertDone;
-    startupAlertDone = true; // only suppress the startup re-check once
-
-    if (
-      shouldCheckAlert &&
-      isLeak &&
-      currentId !== lastAlertedId &&
-      Date.now() > emailCooldownUntil
-    ) {
-      try {
-        const settings = await EmailSettings.findOne().lean();
-
-        if (settings?.alertOnCritical && settings?.recipientEmail) {
-          lastAlertedId      = currentId;
-          emailCooldownUntil = Date.now() + 5 * 60 * 1000; // 5-min cooldown
-
-          sendDashboardReport({
-            to:      settings.recipientEmail,
-            name:    settings.recipientName || 'Dashboard User',
-            cc:      settings.ccEmails || [],
-            subject: `[${latest.overallSystemStatus}] Water Monitor Alert — Leak Detected`,
-          }).then(result => {
-            console.log(`[EMAIL] Auto-alert sent to ${settings.recipientEmail} — status: ${latest.overallSystemStatus} (msgId: ${result.messageId})`);
-          }).catch(err => {
-            console.error(`[EMAIL] Auto-alert failed: ${err.message}`);
-            // Reset so it retries on the next new prediction
-            lastAlertedId = null;
-          });
-        } else {
-          console.log(`[EMAIL] Alert skipped — alertOnCritical=${settings?.alertOnCritical}, recipientEmail=${settings?.recipientEmail || 'not set'}`);
-        }
-      } catch (emailErr) {
-        console.error('[EMAIL] Failed to load email settings:', emailErr.message);
-      }
-    }
-
   } catch (err) {
     console.error('[SSE] Broadcaster error:', err.message);
   }
@@ -144,20 +92,11 @@ async function tick() {
  * Called once on startup — sends the current snapshot immediately
  * when the first client connects (handled by the route), and also
  * starts the polling interval.
- *
- * We do NOT pre-seed lastAlertedId here — this means if the server
- * restarts and the latest record is still CRITICAL/WARNING and
- * alertOnCritical is enabled, one alert email will fire within the
- * first 5-second tick. That's the correct behaviour: Render redeploys
- * should not silently swallow an active alert.
  */
 export async function getInitialSnapshot() {
   try {
     const snapshot = await buildSnapshot();
     if (snapshot.latest) {
-      // Seed lastSeenId so SSE doesn't re-broadcast on the very first tick,
-      // but do NOT seed lastAlertedId — let the first tick decide whether
-      // an alert email is needed for the current state.
       lastSeenId = snapshot.latest._id.toString();
     }
     return snapshot;
