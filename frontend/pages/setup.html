@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>First-time setup — Smart Water Monitor</title>
+  <link rel="stylesheet" href="/shared.css">
+  <style>
+    body { background: var(--surface-2); }
+    .wrap { width: min(500px, calc(100% - 32px)); margin: 6vh auto; }
+    .card { background: #fff; padding: 32px; border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }
+    .card h1 { font-size: 22px; margin-bottom: 4px; }
+    .card .subtitle { color: var(--muted); margin-bottom: 24px; font-size: 14px; }
+    .form-grid { display: grid; gap: 14px; }
+    .form-grid label { display: grid; gap: 6px; font-weight: 600; font-size: 14px; }
+    .form-grid input { padding: 10px 12px; border: 1px solid var(--border-2); border-radius: var(--radius); font: inherit; width: 100%; box-sizing: border-box; }
+    .form-grid input:focus { outline: 2px solid var(--primary); outline-offset: 1px; }
+    .btn-full { width: 100%; justify-content: center; margin-top: 6px; }
+    .msg { min-height: 22px; margin-top: 14px; font-size: 14px; }
+    .msg.ok  { color: var(--success, #16a34a); }
+    .msg.err { color: var(--danger,  #dc2626); }
+    .divider { border: none; border-top: 1px solid var(--border); margin: 22px 0; }
+    .note { font-size: 13px; color: var(--muted); margin-top: 18px; background: #fef9c3; border: 1px solid #fde68a; border-radius: 6px; padding: 12px 14px; line-height: 1.5; }
+    .done-card { display: none; text-align: center; padding: 28px; }
+    .done-card h2 { color: var(--success, #16a34a); margin-bottom: 8px; }
+    .done-card p  { color: var(--muted); margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="card">
+
+      <div id="setup-form-section">
+        <h1>💧 First-time setup</h1>
+        <p class="subtitle">Create the initial administrator account. This page becomes inactive once an admin exists.</p>
+
+        <form id="setup-form" class="form-grid" novalidate>
+          <label>
+            Full name
+            <input name="name" type="text" required minlength="2" maxlength="100" placeholder="e.g. Siddhant Labaje" autocomplete="name">
+          </label>
+          <label>
+            Email address
+            <input name="email" type="email" required maxlength="254" placeholder="admin@example.com" autocomplete="email">
+          </label>
+          <label>
+            Password <span style="font-weight:400;color:var(--muted)">(min 12 characters)</span>
+            <input name="password" type="password" required minlength="12" maxlength="128" autocomplete="new-password">
+          </label>
+          <label>
+            Setup key <span style="font-weight:400;color:var(--muted)">(from your .env ADMIN_BOOTSTRAP_KEY)</span>
+            <input name="bootstrapKey" type="password" required placeholder="Enter setup key">
+          </label>
+          <button class="btn btn-full" type="submit" id="submit-btn">Create admin account</button>
+        </form>
+
+        <div id="msg" class="msg" role="status" aria-live="polite"></div>
+
+        <p class="note">
+          ⚠️ <strong>After creating the admin account, remove or blank <code>ADMIN_BOOTSTRAP_KEY</code> from your <code>.env</code> file</strong> to disable this page permanently.
+        </p>
+      </div>
+
+      <div class="done-card" id="done-section">
+        <h2>✅ Admin account created</h2>
+        <p>You can now sign in with the credentials you just set.</p>
+        <a href="login.html" class="btn">Go to login</a>
+        <p class="note" style="margin-top:18px;text-align:left">
+          ⚠️ <strong>Remove <code>ADMIN_BOOTSTRAP_KEY</code> from your <code>.env</code></strong> now to prevent this page from being used again.
+        </p>
+      </div>
+
+    </section>
+  </main>
+
+  <script>
+  'use strict';
+
+  const form    = document.getElementById('setup-form');
+  const msgEl   = document.getElementById('msg');
+  const btn     = document.getElementById('submit-btn');
+
+  function showMsg(text, ok) {
+    msgEl.textContent = text;
+    msgEl.className   = 'msg ' + (ok ? 'ok' : 'err');
+  }
+
+  // If already an admin, redirect to login
+  fetch('/api/auth/me', { credentials: 'same-origin' })
+    .then(r => r.ok ? r.json() : null)
+    .then(d => { if (d?.user?.role === 'admin') location.replace('/admin.html'); })
+    .catch(() => {});
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    btn.disabled = true;
+    showMsg('Creating account…', true);
+
+    const values = Object.fromEntries(new FormData(form));
+
+    // Basic client-side validation
+    if (values.password.length < 12) {
+      showMsg('Password must be at least 12 characters.', false);
+      btn.disabled = false;
+      return;
+    }
+
+    try {
+      const res  = await fetch('/api/auth/bootstrap-admin', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(values),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showMsg(data.message || 'Setup failed.', false);
+        btn.disabled = false;
+        return;
+      }
+
+      // Show done state
+      document.getElementById('setup-form-section').style.display = 'none';
+      document.getElementById('done-section').style.display       = 'block';
+
+    } catch (err) {
+      showMsg('Network error — check that the server is running.', false);
+      btn.disabled = false;
+    }
+  });
+  </script>
+</body>
+</html>
