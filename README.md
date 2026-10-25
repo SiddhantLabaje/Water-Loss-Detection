@@ -1,200 +1,203 @@
-# AI Smart Water Monitoring — Full Stack
+# Smart Water Loss Detection
 
-> ESP32 → ThingSpeak → Node.js → MongoDB → Python ML → Node.js REST API → Dashboard
+An IoT water-monitoring application that collects sensor readings, predicts leaks and anomalies, estimates water loss, and provides administrator and plumber workflows for repairs.
 
----
+## How it works
 
-## Architecture
-
-```
-┌──────────────────┐
-│   ESP32 / Wokwi  │  Flow, Pressure, Tank Level, Turbidity
-└────────┬─────────┘
-         │  (HTTP POST fields)
-         ▼
-┌──────────────────┐
-│    ThingSpeak    │  Channel 3445219
-└────────┬─────────┘
-         │  (axios GET every 15 s)
-         ▼
-┌──────────────────────────┐
-│     NODE.JS BACKEND      │  backend/
-│                          │
-│  ThingSpeak cron fetcher │  services/cronJob.service.js
-│  Express REST API        │  app.js
-│  /api/sensors/*          │  routes/sensor.route.js
-│  /api/ml-predictions/*   │  routes/mlPrediction.route.js
-│  /api/dashboard/*        │  routes/dashboard.route.js
-└────────────┬─────────────┘
-             │  read/write
-             ▼
-┌──────────────┐
-│   MongoDB    │  water_loss_detection
-│              │
-│  sensors         ← raw ESP32 data (written by Node.js)
-│  ml_predictions  ← ML results    (written by Python)
-└──────┬───────┘
-       │  (pymongo, read sensors / write ml_predictions)
-       ▼
-┌──────────────────────────┐
-│       PYTHON ML          │  ai-smart-water-ml/
-│                          │
-│  Random Forest Classifier│  leak detection
-│  Isolation Forest × 3   │  anomaly detection
-│  Random Forest Regressor │  water loss rate
-│  Water Quality Rules     │  turbidity thresholds
-│  Severity / Status       │  rule-based analytics
-└────────────┬─────────────┘
-             │  REST API reads ml_predictions
-             ▼
-┌──────────────────────────┐
-│        DASHBOARD         │  frontend/pages/index.html
-│                          │
-│  Live Sensor Readings    │  auto-refresh every 10 s
-│  Leak Detection          │  probability bar + severity
-│  Anomaly Detection       │  per-channel status
-│  Water Quality           │  turbidity-based
-│  Water Loss Analysis     │  rate + volume
-│  System Statistics       │  totals / averages
-│  4 Real-time Graphs      │  Chart.js
-│  Recent Alerts           │  CRITICAL + WARNING
-│  Prediction History Table│  paginated
-└──────────────────────────┘
+```text
+ESP32 / Wokwi
+    │ sensor readings
+    ▼
+ThingSpeak ── every 15 seconds ──► Node.js / Express
+                                      ├── Saves readings to MongoDB
+                                      ├── Runs the Python ML worker periodically
+                                      ├── Serves the web application and REST API
+                                      └── Sends email notifications (when configured)
+                                                  │
+                                                  ▼
+                                               MongoDB
+                                      sensors · predictions · incidents
+                                                  │
+                                                  ▼
+                                        Browser dashboards
 ```
 
----
+The Node.js backend starts the Python worker automatically. For local use, run the backend once; you do not need to start a separate prediction process.
 
-## Quick Start
+## Features
 
-### 1 — Start the Node.js backend
+- Live flow, pressure, tank-level, and turbidity monitoring
+- ML-based leak classification, anomaly detection, and water-loss estimates
+- Historical predictions, analytics, and alerts
+- Admin dashboard for incident management, plumber approvals, proposals, assignments, and recovery verification
+- Plumber registration, profile management, repair proposals, assignments, and completion reports
+- Role-protected pages and API routes
+
+## Requirements
+
+- Node.js with npm
+- Python 3 and pip, using versions compatible with `ai-smart-water-ml/requirements.txt`
+- MongoDB (Atlas or a local replica-set-enabled deployment)
+- ThingSpeak channel credentials for live sensor ingestion
+
+MongoDB transactions are used in parts of the repair and assignment workflow. Use MongoDB Atlas or another deployment configured as a replica set for those operations.
+
+## Local setup
+
+Run commands from the repository root unless a step says otherwise.
+
+### 1. Configure environment variables
+
+Copy `.env.example` to `.env` in the repository root. The backend also supports `backend/.env`, which takes precedence if both files exist. Fill in at least:
+
+```env
+MONGO_URI=mongodb://localhost:27017/water_loss_detection
+MONGO_DATABASE=water_loss_detection
+MONGO_COLLECTION=sensors
+PORT=5000
+JWT_SECRET=<random secret of at least 32 characters>
+CHANNEL_ID=<your ThingSpeak channel ID>
+READ_API_KEY=<your ThingSpeak read API key>
+```
+
+Generate a JWT secret locally:
+
+```bash
+node -e "console.log(require('node:crypto').randomBytes(48).toString('hex'))"
+```
+
+For email notifications and plumber email verification, also set `EMAIL_USER` and `EMAIL_PASS` to SMTP credentials. For Gmail, use an App Password. Never commit `.env` or share its secret values.
+
+### 2. Install dependencies
 
 ```bash
 cd backend
-npm start
-# Server running on http://localhost:5000
+npm install
+cd ../ai-smart-water-ml
+python -m pip install -r requirements.txt
+cd ..
 ```
 
-Configure `backend/.env` first using the secure setup below; the backend will not start without a strong `JWT_SECRET`.
+Ensure `PYTHON_BIN` points to the Python executable used above if `python` is not available on your `PATH`. The default is `python` on Windows and `python3` on Linux.
 
-### 2 — Start the Python ML pipeline
+### 3. Create the initial admin and database indexes
+
+Set these values in the environment file used by the backend:
+
+```env
+ADMIN_NAME=Your Name
+ADMIN_EMAIL=you@example.com
+ADMIN_PASSWORD=<unique password, 12-128 characters>
+```
+
+Then run these commands from `backend/`:
 
 ```bash
-cd ai-smart-water-ml     # (in the mlmodel folder)
-python src/pipeline/prediction_pipeline.py
+npm run bootstrap-admin
+npm run create-indexes
 ```
 
-Keep this process running alongside the Node.js backend. The backend stores raw sensor readings; this pipeline processes new readings and writes the predictions shown on the dashboard. If the pipeline is stopped, the sensor page may update while the dashboard's predictions remain stale.
+Admin bootstrap is one-time only. Remove the bootstrap credentials from the environment after the admin account is created.
 
-> Train first if you haven't yet:
-> ```bash
-> python src/pipeline/training_pipeline.py
-> ```
+### 4. Start the application
 
-The Render blueprint deploys the ML pipeline as a background worker. It uses the backend's `MONGO_URI` and the `water_loss_detection` database, so both services read and write the same collections. The five trained `.pkl` model files under `ai-smart-water-ml/models/` must be committed to Git for the worker to load them.
+From `backend/`:
 
-### 3 — Open the dashboard
-
-Open `http://localhost:5000/` after starting the backend. This serves the dashboard and the role-specific login and registration pages.
-
----
-
-## Backend API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/health` | Health check |
-| GET | `/api/sensors/sensor-data?limit=100&page=1` | Paginated raw sensors |
-| GET | `/api/sensors/latest` | Most recent sensor record |
-| GET | `/api/ml-predictions/latest` | Most recent ML prediction |
-| GET | `/api/ml-predictions/history?limit=30&page=1` | Paginated prediction history |
-| GET | `/api/ml-predictions/stats` | Aggregated statistics |
-| GET | `/api/ml-predictions/alerts?limit=10` | Recent CRITICAL/WARNING records |
-| GET | `/api/dashboard/latest-analytics` | Latest dashboard analytics doc |
-| GET | `/api/dashboard/cleaned-sensor-data` | Today's analytics |
-| GET | `/api/dashboard/analytics-history` | Last 14 days analytics |
-
----
-
-## MongoDB Collections
-
-| Collection | Written by | Purpose |
-|-----------|-----------|---------|
-| `sensors` | Node.js (ThingSpeak cron) | Raw ESP32 sensor readings |
-| `ml_predictions` | Python ML pipeline | ML results per sensor record |
-| `dashboard_analytics` | (analytics_pipeline.py) | Aggregated daily stats |
-
----
-
-## Environment Variables
-
-**backend/.env**
-```env
-MONGO_URI=mongodb://localhost:27017/water_loss_detection
-PORT=5000
-CHANNEL_ID=3445219
-READ_API_KEY=<your_thingspeak_key>
-EMAIL_USER=<your_gmail_address>
-EMAIL_PASS=<your_gmail_app_password>
+```bash
+npm start
 ```
 
-**ai-smart-water-ml/.env**
-```env
-MONGO_URI=mongodb://localhost:27017
-MONGO_DATABASE=water_loss_detection
-MONGO_COLLECTION=sensors
-TRAINING_FILE=data/training/water_sensor_data_water_loss_rate.xlsx
-PREDICTION_INTERVAL_SECONDS=10
+Open [http://localhost:5000](http://localhost:5000). Sign in at `/login.html`; plumbers can register at `/plumber-register.html` and need admin approval before accessing monitoring features.
+
+At startup, the backend connects to MongoDB, polls ThingSpeak every 15 seconds, and launches the Python ML worker on the interval configured by `ML_RUN_INTERVAL_MS` (15 seconds by default).
+
+## Optional: retrain the ML models
+
+Trained model files and the sample training workbook are included in `ai-smart-water-ml/`. Retraining is not required to start the application. To retrain using the included dataset:
+
+```bash
+cd ai-smart-water-ml
+python src/pipeline/training_pipeline.py
 ```
 
-> Both sides must use the same database name: `water_loss_detection`
->
-> Configure `EMAIL_USER` and `EMAIL_PASS` with a Gmail account and Google
-> App Password. Then enter the owner's name and destination email on the
-> Alerts page. The system emails the owner when a new prediction transitions
-> the system into CRITICAL status; it does not email for WARNING or repeated
-> predictions that remain CRITICAL.
+The pipeline's default training path is `data/training/water_sensor_data.xlsx`. To use the workbook included in this repository, set `TRAINING_FILE=data/training/water_sensor_data_water_loss_rate.xlsx` in `.env` before running the command. The workbook must contain the sensor feature columns and prediction labels expected by the pipeline.
 
-## Admin and plumber operations
+## Application pages
 
-The backend also supports a role-protected operations workflow:
+| Page | Purpose |
+| --- | --- |
+| `/login.html` | Sign in |
+| `/plumber-register.html` | Plumber registration |
+| `/index.html` | Main monitoring dashboard |
+| `/sensors.html` | Sensor readings |
+| `/predictions.html` | Prediction history |
+| `/analytics.html` | Analytics |
+| `/alerts.html` | Alerts and notification settings |
+| `/admin.html` | Admin operations |
+| `/plumber.html` | Plumber workspace |
 
-- `POST /api/auth/register` creates a pending plumber account and profile.
-- `POST /api/auth/login`, `POST /api/auth/logout`, and `GET /api/auth/me` manage sessions.
-- Admin operations are under `/api/admin`; plumber operations are under `/api/plumber`.
-- A positive leak prediction creates a deduplicated open repair incident.
-- Approved plumbers can submit costed proposals; admins assign/reassign through transaction-protected endpoints.
-- A plumber completion report does not mark the incident recovered. Admin verification requires a configurable number of fresh, consecutive normal ML predictions after completion.
+Monitoring pages require an approved plumber or administrator account. The admin and plumber pages require their respective roles.
 
-### Local setup
+## API overview
 
-1. Copy `backend/.env.example` to `backend/.env` and set MongoDB, SMTP and a newly generated `JWT_SECRET` (at least 32 characters). Never commit `.env`.
-2. Install dependencies with `cd backend; npm install`.
-3. Create the initial administrator once: set `ADMIN_NAME`, `ADMIN_EMAIL`, and a unique `ADMIN_PASSWORD` in the environment, then run `npm run bootstrap-admin`. Do not use a default password; remove the bootstrap password afterward.
-4. Ensure indexes exist with `npm run create-indexes`. This creates schema indexes but does not drop existing indexes.
-5. Start the backend with `npm start`. The existing Python prediction worker remains a separate process.
-6. Visit `/login.html` to sign in, or `/plumber-register.html` to register a plumber. Plumber registration requires working SMTP for email verification and an administrator's approval.
+All API routes are prefixed with `/api`.
 
-The Render blueprint deliberately leaves `MONGO_URI`, `READ_API_KEY`, SMTP credentials and `JWT_SECRET` as protected service variables. Set them in the `smart-water-monitor` web service's Environment settings before deploying. Generate a strong secret locally with `node -e "console.log(require('node:crypto').randomBytes(48).toString('hex'))"` and set the result as `JWT_SECRET`; never commit it to Git. The backend binds its port before waiting for MongoDB and other startup services so Render can detect the web service. The Python worker receives the web service's `MONGO_URI` through a Render service reference. MongoDB transactions used by assignment and completion workflows require an Atlas replica set or another MongoDB deployment that supports transactions.
+| Route | Description |
+| --- | --- |
+| `GET /api/health` | Service health check |
+| `/api/auth` | Registration, login, logout, email verification, and password reset |
+| `/api/sensors` | Sensor history and latest reading |
+| `/api/ml-predictions` | Latest prediction, history, statistics, and alerts |
+| `/api/dashboard` | Dashboard analytics |
+| `/api/admin` | Admin dashboard, plumber approvals, incidents, proposals, assignments, and audit logs |
+| `/api/plumber` | Plumber profile, repair requests, proposals, and assignments |
+| `/api/repairs` | Repair history and recovery verification |
+| `/api/stream` | Authenticated live data stream |
+| `/api/notifications` | Admin notification settings |
 
-Set `WEB_ORIGINS` to a comma-separated list of additional frontend origins when hosting the browser UI on another domain. If `APP_URL` is set, it is used as the base for emailed links; otherwise Render's service host is normalized to HTTPS automatically.
+See the route files in `backend/routes/` for request parameters, validation, and access requirements.
 
-`RECOVERY_REQUIRED_READINGS` defaults to 3 and `RECOVERY_MAX_AGE_MINUTES` defaults to 5. Recovery uses only the existing ML pipeline's `NORMAL` status and non-leak prediction plus complete, fresh sensor fields; it does not invent physical thresholds. These settings must be chosen for the installation's reading cadence.
+## Configuration reference
 
-Run backend unit tests with `cd backend; npm test`. Database-backed end-to-end tests require a non-production test database and are not run as part of this setup.
+| Variable | Purpose | Default / requirement |
+| --- | --- | --- |
+| `MONGO_URI` | MongoDB connection string | Required |
+| `MONGO_DATABASE` | Database used by the ML worker | `water_loss_detection` |
+| `MONGO_COLLECTION` | Sensor collection used by the ML worker | `sensors` |
+| `PORT` | HTTP server port | `5000` |
+| `JWT_SECRET` | Signs authentication tokens | Required; at least 32 characters |
+| `CHANNEL_ID` | ThingSpeak channel | Required for ingestion |
+| `READ_API_KEY` | ThingSpeak read key | Required for private channels |
+| `PYTHON_BIN` | Python executable used by the worker | `python` on Windows; `python3` otherwise |
+| `ML_RUN_INTERVAL_MS` | Delay between ML worker runs | `15000` |
+| `EMAIL_USER`, `EMAIL_PASS` | SMTP credentials for email | Optional; needed for email features |
+| `WEB_ORIGINS` | Comma-separated allowed browser origins | Unset allows all origins; configure in production |
+| `APP_URL` | Base URL used for emailed links | Falls back to `RENDER_EXTERNAL_URL`, then localhost |
+| `RECOVERY_REQUIRED_READINGS` | Fresh normal readings required to verify recovery | `3` |
+| `RECOVERY_MAX_AGE_MINUTES` | Maximum age of a recovery reading | `5` |
+| `PREDICTION_INTERVAL_SECONDS` | ML prediction interval setting | `10` |
+| `SEVERITY_LOW_MAX`, `SEVERITY_MEDIUM_MAX` | Leak severity boundaries | `0.50`, `0.80` |
+| `TURBIDITY_GOOD_MAX`, `TURBIDITY_MODERATE_MAX` | Water-quality boundaries | `30`, `60` |
 
-This implements the authentication and repair workflow foundation, not every item in the larger product specification. Evidence/file uploads, advanced dashboard visualizations, notification preference/history screens, and comprehensive database-backed integration testing still need implementation.
+The root `.env.example` lists the supported variables and example values.
 
----
+## Deployment
 
-## Dashboard Features
+The repository includes a Render blueprint in `render.yaml`. It deploys a single Node.js web service, installs the Python ML dependencies, and runs the Python worker from the backend. Configure the protected values (`MONGO_URI`, `JWT_SECRET`, ThingSpeak credentials, and any email credentials) in the Render service environment before deploying. Do not put production secrets in `render.yaml` or commit them to Git.
 
-- **Status Banner** — colour-coded NORMAL / WARNING / CRITICAL with blinking on critical
-- **Live Sensors** — flow, pressure, tank level, turbidity with anomaly hints
-- **Leak Detection** — LEAK/NORMAL label, probability bar, severity badge
-- **Anomaly Detection** — per-sensor NORMAL/ABNORMAL with animated indicators
-- **Water Quality** — GOOD/MODERATE/POOR based on turbidity NTU value
-- **Water Loss** — ML-predicted rate (L/hr), flow loss component, volume per interval
-- **Statistics** — total predictions, leak count/rate, critical count, avg water loss
-- **4 Charts** — sensor trends, leak prob + water loss, status distribution pie, anomaly bar
-- **Alert Feed** — recent CRITICAL/WARNING events with detail
-- **History Table** — full paginated prediction log with all ML fields
+## Tests
+
+Run the backend tests from `backend/`:
+
+```bash
+npm test
+```
+
+## Project structure
+
+```text
+backend/          Express API, authentication, MongoDB models, and services
+frontend/         Static HTML, CSS, and browser JavaScript
+ai-smart-water-ml/ Python prediction worker, training pipeline, models, and data
+render.yaml       Render deployment blueprint
+```
