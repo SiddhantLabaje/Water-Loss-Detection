@@ -1,5 +1,15 @@
 import dotenv from "dotenv";
-dotenv.config();
+import path from "path";
+import { fileURLToPath } from "url";
+import { existsSync } from "fs";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = path.dirname(__filename);
+
+// Load .env: prefer backend/.env, fall back to repo-root .env
+const localEnv = path.join(__dirname, "..", ".env");
+const rootEnv  = path.join(__dirname, "..", "..", ".env");
+dotenv.config({ path: existsSync(localEnv) ? localEnv : rootEnv });
 
 import mongoose from "mongoose";
 import User from "../models/user.model.js";
