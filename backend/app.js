@@ -24,7 +24,14 @@ const __dirname  = path.dirname(__filename);
 const app = express();
 
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
-app.use(cors({ credentials: true, origin: true })); // allow all origins; tighten in production via WEB_ORIGINS
+
+// CORS: in production restrict to WEB_ORIGINS (comma-separated list).
+// In dev (no WEB_ORIGINS set) allow all origins for convenience.
+const _rawOrigins = process.env.WEB_ORIGINS;
+const _corsOrigin = _rawOrigins
+  ? _rawOrigins.split(",").map((o) => o.trim()).filter(Boolean)
+  : true;
+app.use(cors({ credentials: true, origin: _corsOrigin }));
 app.use(express.json({ limit: "32kb" }));
 app.use(cookieParser());
 

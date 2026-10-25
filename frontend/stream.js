@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const SSE_URL = 'http://localhost:5000/api/stream';
+  const SSE_URL = '/api/stream';
   let es        = null;
   let retryMs   = 2000;
   const MAX_RETRY = 30000;

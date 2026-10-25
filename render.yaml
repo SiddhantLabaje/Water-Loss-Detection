@@ -1,4 +1,5 @@
 services:
+  # ── Node.js web server (frontend + backend API) ───────────────────────────
   - type: web
     name: smart-water-monitor
     runtime: node
@@ -8,23 +9,38 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # Render sets this automatically — used by keepAlive and email links
       - key: RENDER_EXTERNAL_URL
         fromService:
           type: web
           name: smart-water-monitor
           property: host
+      # Set WEB_ORIGINS to the same value so CORS is restricted in prod
+      - key: WEB_ORIGINS
+        fromService:
+          type: web
+          name: smart-water-monitor
+          property: host
+      # ── Secrets: set these in the Render dashboard (sync: false) ──────────
       - key: MONGO_URI
         sync: false
+      - key: JWT_SECRET
+        sync: false
       - key: CHANNEL_ID
-        value: "3445219"
+        sync: false
       - key: READ_API_KEY
         sync: false
       - key: EMAIL_USER
         sync: false
       - key: EMAIL_PASS
         sync: false
-      - key: JWT_SECRET
-        sync: false
+      # ── Optional tuning (safe defaults are in code) ───────────────────────
+      - key: RECOVERY_REQUIRED_READINGS
+        value: "3"
+      - key: RECOVERY_MAX_AGE_MINUTES
+        value: "5"
+
+  # ── Python ML pipeline (long-running worker) ─────────────────────────────
   - type: worker
     name: water-loss-ml-pipeline
     runtime: python
@@ -32,6 +48,7 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: python src/pipeline/prediction_pipeline.py
     envVars:
+      # Share the same Atlas cluster as the web service
       - key: MONGO_URI
         fromService:
           type: web
@@ -41,3 +58,13 @@ services:
         value: water_loss_detection
       - key: MONGO_COLLECTION
         value: sensors
+      - key: PREDICTION_INTERVAL_SECONDS
+        value: "10"
+      - key: SEVERITY_LOW_MAX
+        value: "0.50"
+      - key: SEVERITY_MEDIUM_MAX
+        value: "0.80"
+      - key: TURBIDITY_GOOD_MAX
+        value: "30"
+      - key: TURBIDITY_MODERATE_MAX
+        value: "60"

@@ -15,11 +15,19 @@ from dotenv import load_dotenv
 # ---------------------------------------------------------------------------
 # Locate the project root (two levels above this file: src/config/config.py)
 # ---------------------------------------------------------------------------
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent   # ai-smart-water-ml/
+REPO_ROOT    = PROJECT_ROOT.parent                             # water-loss-detection-main/
 
-# Load .env from the project root if it exists
-_env_path = PROJECT_ROOT / ".env"
-load_dotenv(dotenv_path=_env_path)
+# Load .env: prefer the one inside ai-smart-water-ml/, fall back to the
+# single shared .env at the repository root.  This lets both the backend
+# and the ML pipeline share one env file when deployed on the same machine,
+# while still allowing the ML service to have its own overrides in dev.
+_local_env = PROJECT_ROOT / ".env"
+_root_env  = REPO_ROOT    / ".env"
+if _local_env.exists():
+    load_dotenv(dotenv_path=_local_env)
+elif _root_env.exists():
+    load_dotenv(dotenv_path=_root_env)
 
 # ---------------------------------------------------------------------------
 # MongoDB

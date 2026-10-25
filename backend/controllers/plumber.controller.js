@@ -394,3 +394,10 @@ export async function verifyRecovery(req, res) {
     res.status(500).json({ message: "Unable to verify recovery." });
   }
 }
+
+// ---------------------------------------------------------------------------
+// Aliases to match the names used in plumber.route.js
+// ---------------------------------------------------------------------------
+export const submitProposal    = createProposal;
+export const listMyProposals   = listProposals;
+export const listMyAssignments = listAssignments;
