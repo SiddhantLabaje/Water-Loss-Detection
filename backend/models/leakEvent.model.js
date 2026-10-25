@@ -70,7 +70,6 @@ const leakEventSchema = new mongoose.Schema(
 leakEventSchema.index({ status: 1 });
 leakEventSchema.index({ severity: 1 });
 leakEventSchema.index({ createdAt: -1 });
-leakEventSchema.index({ incidentId: 1 }, { unique: true });
 leakEventSchema.index({ activeKey: 1 }, { unique: true, sparse: true });
 
 const LeakEvent = mongoose.model("LeakEvent", leakEventSchema);

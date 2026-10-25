@@ -15,6 +15,7 @@ dotenv.config({ path: existsSync(localEnv) ? localEnv : rootEnv });
 import connectDatabase from "./config/db.js";
 import app from "./app.js";
 import { startBroadcaster } from "./services/broadcaster.service.js";
+import { startMlRunner } from "./services/mlRunner.service.js";
 
 const PORT = process.env.PORT || 5000;
 
@@ -32,6 +33,7 @@ async function startServer() {
   await import("./services/cronJob.service.js");
   await import("./services/keepAlive.service.js");
   await startBroadcaster();
+  startMlRunner();
 
   app.listen(PORT, () => {
     console.log(`Server running → http://localhost:${PORT}`);

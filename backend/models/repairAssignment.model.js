@@ -48,7 +48,6 @@ const repairAssignmentSchema = new mongoose.Schema(
   { collection: "repair_assignments", timestamps: true }
 );
 
-repairAssignmentSchema.index({ incidentId: 1 });
 repairAssignmentSchema.index({ plumberId: 1 });
 repairAssignmentSchema.index({ status: 1 });
 repairAssignmentSchema.index(

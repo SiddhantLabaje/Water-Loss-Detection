@@ -1,10 +1,11 @@
 services:
-  # ── Node.js web server (frontend + backend API) ───────────────────────────
+  # ── Single web service: Node.js backend + Python ML in one process ────────
   - type: web
     name: smart-water-monitor
     runtime: node
     rootDir: backend
-    buildCommand: npm install
+    # Install Node deps, then install Python ML deps from the sibling folder
+    buildCommand: npm install && pip install -r ../ai-smart-water-ml/requirements.txt
     startCommand: npm start
     envVars:
       - key: NODE_ENV
@@ -15,45 +16,19 @@ services:
           type: web
           name: smart-water-monitor
           property: host
-      # Set WEB_ORIGINS to the same value so CORS is restricted in prod
+      # CORS: restrict to the deployed URL in production
       - key: WEB_ORIGINS
         fromService:
           type: web
           name: smart-water-monitor
           property: host
-      # ── Secrets: set these in the Render dashboard (sync: false) ──────────
-      - key: MONGO_URI
-        sync: false
-      - key: JWT_SECRET
-        sync: false
-      - key: CHANNEL_ID
-        sync: false
-      - key: READ_API_KEY
-        sync: false
-      - key: EMAIL_USER
-        sync: false
-      - key: EMAIL_PASS
-        sync: false
-      # ── Optional tuning (safe defaults are in code) ───────────────────────
-      - key: RECOVERY_REQUIRED_READINGS
-        value: "3"
-      - key: RECOVERY_MAX_AGE_MINUTES
-        value: "5"
-
-  # ── Python ML pipeline (long-running worker) ─────────────────────────────
-  - type: worker
-    name: water-loss-ml-pipeline
-    runtime: python
-    rootDir: ai-smart-water-ml
-    buildCommand: pip install -r requirements.txt
-    startCommand: python src/pipeline/prediction_pipeline.py
-    envVars:
-      # Share the same Atlas cluster as the web service
-      - key: MONGO_URI
-        fromService:
-          type: web
-          name: smart-water-monitor
-          envVarKey: MONGO_URI
+      # Python executable on Render (Linux)
+      - key: PYTHON_BIN
+        value: python3
+      # ML runner interval (ms) — 15 s matches ThingSpeak poll rate
+      - key: ML_RUN_INTERVAL_MS
+        value: "15000"
+      # ML pipeline thresholds (safe defaults)
       - key: MONGO_DATABASE
         value: water_loss_detection
       - key: MONGO_COLLECTION
@@ -68,3 +43,20 @@ services:
         value: "30"
       - key: TURBIDITY_MODERATE_MAX
         value: "60"
+      - key: RECOVERY_REQUIRED_READINGS
+        value: "3"
+      - key: RECOVERY_MAX_AGE_MINUTES
+        value: "5"
+      # ── Secrets: set these in the Render dashboard ─────────────────────
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CHANNEL_ID
+        sync: false
+      - key: READ_API_KEY
+        sync: false
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASS
+        sync: false
