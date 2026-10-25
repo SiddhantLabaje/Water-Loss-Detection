@@ -59,6 +59,25 @@
     </section>
 
     <section>
+      <div class="sec-header"><span class="sec-title">Critical Alert Email</span></div>
+      <div class="card">
+        <p class="muted" style="margin-bottom:16px">A notification is sent when the system first enters CRITICAL status. Save the owner's name and email address below.</p>
+        <form id="notification-form" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+          <label style="display:grid;gap:6px;flex:1;min-width:220px">
+            <span class="small muted">Owner name</span>
+            <input id="owner-name" name="ownerName" required maxlength="100" autocomplete="name" style="padding:9px;border:1px solid var(--border-2);border-radius:var(--radius);font:inherit">
+          </label>
+          <label style="display:grid;gap:6px;flex:1;min-width:220px">
+            <span class="small muted">Owner email</span>
+            <input id="owner-email" name="ownerEmail" type="email" required maxlength="254" autocomplete="email" style="padding:9px;border:1px solid var(--border-2);border-radius:var(--radius);font:inherit">
+          </label>
+          <button id="save-notification" class="btn" type="submit">Save recipient</button>
+        </form>
+        <p id="notification-message" class="small" role="status" aria-live="polite" style="margin-top:12px"></p>
+      </div>
+    </section>
+
+    <section>
       <div class="sec-header"><span class="sec-title">Alert Events</span></div>
       <div id="alert-feed"><div class="card"><div class="loading">Loading alerts...</div></div></div>
     </section>
@@ -125,6 +144,44 @@ function setConn(ok) { el('conn-dot').className = ok ? 'dot dot-ok' : 'dot dot-e
 function anomBadge(v)   { return v === 'ABNORMAL' ? '<span class="badge b-red">Abnormal</span>' : '<span class="badge b-green">Normal</span>'; }
 function sevBadge(s)    { return s === 'high' ? '<span class="badge b-red">High</span>' : s === 'medium' ? '<span class="badge b-amber">Medium</span>' : s ? `<span class="badge b-green">${cap(s)}</span>` : '—'; }
 
+async function loadNotificationSettings() {
+  const response = await fetch(`${API}/notifications/settings`);
+  if (response.status === 404) return;
+  if (!response.ok) throw new Error(`Unable to load notification settings (${response.status}).`);
+  const settings = await response.json();
+  el('owner-name').value = settings.ownerName || '';
+  el('owner-email').value = settings.ownerEmail || '';
+}
+
+el('notification-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const button = el('save-notification');
+  const message = el('notification-message');
+  button.disabled = true;
+  message.textContent = 'Saving recipient...';
+  message.style.color = 'var(--muted)';
+
+  try {
+    const response = await fetch(`${API}/notifications/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ownerName: el('owner-name').value,
+        ownerEmail: el('owner-email').value,
+      }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || 'Unable to save recipient.');
+    message.textContent = result.message;
+    message.style.color = 'var(--success)';
+  } catch (error) {
+    message.textContent = error.message;
+    message.style.color = 'var(--danger)';
+  } finally {
+    button.disabled = false;
+  }
+});
+
 async function load() {
   const limit = el('limit-sel').value;
   const list  = await api(`/ml-predictions/alerts?limit=${limit}`);
@@ -181,6 +238,11 @@ async function load() {
   }
   el('updated').textContent = 'Last updated ' + new Date().toLocaleTimeString();
 }
+
+loadNotificationSettings().catch(error => {
+  el('notification-message').textContent = error.message;
+  el('notification-message').style.color = 'var(--danger)';
+});
 
 doFetch();
 startLive();

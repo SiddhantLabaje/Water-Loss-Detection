@@ -19,6 +19,10 @@ services:
         value: "3445219"
       - key: READ_API_KEY
         value: 6PILE5SJIDU76BGD
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASS
+        sync: false
   - type: worker
     name: water-loss-ml-pipeline
     runtime: python

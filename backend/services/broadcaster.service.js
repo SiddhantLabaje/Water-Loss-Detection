@@ -9,8 +9,11 @@
 import MlPrediction    from '../models/mlPrediction.model.js';
 import DashboardAnalytics from '../models/dashboardAnalytics.model.js';
 import { broadcast, clientCount } from './sse.service.js';
+import { sendCriticalAlert } from './email.service.js';
 
 let lastSeenId        = null;   // _id of the last prediction we processed
+let lastSystemStatus  = null;
+let tickInProgress    = false;
 
 /**
  * Collect all data needed for a full dashboard snapshot in one shot.
@@ -65,10 +68,13 @@ async function buildSnapshot() {
  * Check for a new prediction and broadcast an SSE snapshot.
  */
 async function tick() {
+  if (tickInProgress) return;
+  tickInProgress = true;
+
   try {
     const latest = await MlPrediction.findOne()
       .sort({ _id: -1 })
-      .select('_id overallSystemStatus mlPredictionData')
+      .select('_id overallSystemStatus mlPredictionData mlProbability mlSeverity flowSensorData pressureSensorData tankLevelSensorData turbiditySensorData waterLossRate mlProcessedAt')
       .lean();
     if (!latest) return;
 
@@ -77,6 +83,17 @@ async function tick() {
 
     if (isNew) {
       lastSeenId = currentId;
+      const previousStatus = lastSystemStatus;
+      lastSystemStatus = latest.overallSystemStatus;
+
+      if (latest.overallSystemStatus === 'CRITICAL' && previousStatus !== 'CRITICAL') {
+        try {
+          await sendCriticalAlert(latest);
+        } catch (err) {
+          console.error(`[EMAIL] Failed to send critical alert: ${err.message}`);
+        }
+      }
+
       if (clientCount() > 0) {
         const snapshot = await buildSnapshot();
         broadcast('snapshot', snapshot);
@@ -85,6 +102,8 @@ async function tick() {
     }
   } catch (err) {
     console.error('[SSE] Broadcaster error:', err.message);
+  } finally {
+    tickInProgress = false;
   }
 }
 
@@ -95,19 +114,24 @@ async function tick() {
  */
 export async function getInitialSnapshot() {
   try {
-    const snapshot = await buildSnapshot();
-    if (snapshot.latest) {
-      lastSeenId = snapshot.latest._id.toString();
-    }
-    return snapshot;
+    return await buildSnapshot();
   } catch (err) {
     console.error('[SSE] Initial snapshot error:', err.message);
     return null;
   }
 }
 
-// Poll every 5 seconds — fast enough to feel real-time,
-// light enough to not hammer MongoDB.
-setInterval(tick, 5000);
+export async function startBroadcaster() {
+  const latest = await MlPrediction.findOne()
+    .sort({ _id: -1 })
+    .select('_id overallSystemStatus')
+    .lean();
 
-console.log('SSE broadcaster started — polling every 5 seconds.');
+  if (latest) {
+    lastSeenId = latest._id.toString();
+    lastSystemStatus = latest.overallSystemStatus;
+  }
+
+  setInterval(tick, 5000);
+  console.log('SSE broadcaster started — polling every 5 seconds.');
+}

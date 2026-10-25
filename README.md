@@ -132,6 +132,8 @@ MONGO_URI=mongodb://localhost:27017/water_loss_detection
 PORT=5000
 CHANNEL_ID=3445219
 READ_API_KEY=<your_thingspeak_key>
+EMAIL_USER=<your_gmail_address>
+EMAIL_PASS=<your_gmail_app_password>
 ```
 
 **ai-smart-water-ml/.env**
@@ -144,6 +146,12 @@ PREDICTION_INTERVAL_SECONDS=10
 ```
 
 > Both sides must use the same database name: `water_loss_detection`
+>
+> Configure `EMAIL_USER` and `EMAIL_PASS` with a Gmail account and Google
+> App Password. Then enter the owner's name and destination email on the
+> Alerts page. The system emails the owner when a new prediction transitions
+> the system into CRITICAL status; it does not email for WARNING or repeated
+> predictions that remain CRITICAL.
 
 ---
 

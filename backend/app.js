@@ -6,6 +6,7 @@ import dashboardRoutes     from "./routes/dashboard.route.js";
 import sensorRoutes        from "./routes/sensor.route.js";
 import mlPredictionRoutes  from "./routes/mlPrediction.route.js";
 import streamRoute         from "./routes/stream.route.js";
+import notificationRoutes  from "./routes/notification.route.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -20,6 +21,7 @@ app.use("/api/sensors",         sensorRoutes);
 app.use("/api/ml-predictions",  mlPredictionRoutes);
 app.use("/api/dashboard",       dashboardRoutes);
 app.use("/api/stream",          streamRoute);
+app.use("/api/notifications",   notificationRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => {
