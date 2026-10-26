@@ -73,7 +73,7 @@ const frontendDist = path.join(__dirname, "..", "frontend", "dist");
 app.use(express.static(frontendDist));
 
 // SPA catch-all — serve index.html for every non-API GET so React Router works
-app.get("*", (req, res, next) => {
+app.get("/{*path}", (req, res, next) => {
   if (req.path.startsWith("/api")) return next();
   const index = path.join(frontendDist, "index.html");
   res.sendFile(index, (err) => {
