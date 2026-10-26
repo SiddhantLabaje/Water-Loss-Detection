@@ -17,13 +17,15 @@ import authRoutes    from "./routes/auth.route.js";
 import adminRoutes   from "./routes/admin.route.js";
 import plumberRoutes from "./routes/plumber.route.js";
 import repairRoutes  from "./routes/repair.route.js";
+// These were used for the old HTML page server-side auth guards.
+// Kept in case middleware is needed elsewhere; unused now that React SPA handles routing.
+// eslint-disable-next-line no-unused-vars
 import {
   authenticatePage,
   requireAdmin,
   requireMonitoringAccess,
   requirePlumber,
 } from "./middleware/auth.middleware.js";
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
@@ -62,41 +64,25 @@ app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// ── Serve frontend static files ───────────────────────────────────────────
-const frontendRoot  = path.join(__dirname, "..", "frontend");
-const frontendPages = path.join(frontendRoot, "pages");
+// ── Serve React SPA (Vite build output: frontend/dist) ───────────────────
+// Page-level auth is now handled client-side by React Router.
+// The backend only protects /api routes.
+const frontendDist = path.join(__dirname, "..", "frontend", "dist");
 
-// Start at sign-in; page-level checks handle authenticated role routing.
-app.get("/", (_req, res) => {
-  res.sendFile(path.join(frontendPages, "login.html"));
-});
+// Static assets (hashed JS/CSS bundles, images, fonts)
+app.use(express.static(frontendDist));
 
-// Monitoring pages are intended for approved plumbers and administrators.
-app.get(
-  ["/index.html", "/sensors.html", "/predictions.html", "/analytics.html", "/alerts.html", "/dashboardData.html"],
-  authenticatePage,
-  requireMonitoringAccess,
-  (req, res) => res.sendFile(path.join(frontendPages, path.basename(req.path)))
-);
-app.get("/plumber.html", authenticatePage, requirePlumber, (_req, res) => {
-  res.sendFile(path.join(frontendPages, "plumber.html"));
-});
-app.get("/admin.html", authenticatePage, requireAdmin, (_req, res) => {
-  res.sendFile(path.join(frontendPages, "admin.html"));
-});
-
-// Serve shared assets (shared.css, live.js, stream.js) from frontend/
-app.use(express.static(frontendRoot));
-
-// Serve HTML pages directly from frontend/pages/
-// e.g. /sensors.html  → frontend/pages/sensors.html
-//      /index.html    → frontend/pages/index.html
-app.use(express.static(frontendPages));
-
-// Any other non-API, non-file route → 404 (don't silently redirect to dashboard)
-app.use((req, res, next) => {
+// SPA catch-all — serve index.html for every non-API GET so React Router works
+app.get("*", (req, res, next) => {
   if (req.path.startsWith("/api")) return next();
-  res.status(404).send("Page not found.");
+  const index = path.join(frontendDist, "index.html");
+  res.sendFile(index, (err) => {
+    if (err) {
+      res.status(503).send(
+        "Frontend not built yet.\nRun:  cd frontend && npm install && npm run build"
+      );
+    }
+  });
 });
 
 app.use((err, _req, res, _next) => {

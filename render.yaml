@@ -4,8 +4,13 @@ services:
     name: smart-water-monitor
     runtime: node
     rootDir: backend
-    # Install Node deps, then install Python ML deps from the sibling folder
-    buildCommand: npm install && pip install -r ../ai-smart-water-ml/requirements.txt
+    # 1. Install backend Node deps
+    # 2. Install frontend deps and build the React SPA → frontend/dist
+    # 3. Install Python ML deps (used by the embedded ML runner)
+    buildCommand: >
+      npm install &&
+      cd ../frontend && npm install && npm run build &&
+      cd .. && pip install -r ai-smart-water-ml/requirements.txt
     startCommand: npm start
     envVars:
       - key: NODE_ENV

@@ -74,6 +74,8 @@ For email notifications and plumber email verification, also set `EMAIL_USER` an
 ```bash
 cd backend
 npm install
+cd ../frontend
+npm install
 cd ../ai-smart-water-ml
 python -m pip install -r requirements.txt
 cd ..
@@ -102,9 +104,24 @@ Admin bootstrap is one-time only. Remove the bootstrap credentials from the envi
 
 ### 4. Start the application
 
-From `backend/`:
+Build the React frontend first, then start the backend:
 
 ```bash
+cd frontend
+npm run build
+cd ../backend
+npm start
+```
+
+For local development with hot-reload, run both in parallel:
+
+```bash
+# Terminal 1 — React dev server with API proxy (http://localhost:5173)
+cd frontend
+npm run dev
+
+# Terminal 2 — Node.js backend (http://localhost:5000)
+cd backend
 npm start
 ```
 
@@ -125,17 +142,19 @@ The pipeline's default training path is `data/training/water_sensor_data.xlsx`. 
 
 ## Application pages
 
-| Page | Purpose |
+The frontend is a React single-page application served from `frontend/dist/` after the build step. All routes are handled client-side by React Router.
+
+| Route | Purpose |
 | --- | --- |
-| `/login.html` | Sign in |
-| `/plumber-register.html` | Plumber registration |
-| `/index.html` | Main monitoring dashboard |
-| `/sensors.html` | Sensor readings |
-| `/predictions.html` | Prediction history |
-| `/analytics.html` | Analytics |
-| `/alerts.html` | Alerts and notification settings |
-| `/admin.html` | Admin operations |
-| `/plumber.html` | Plumber workspace |
+| `/login` | Sign in |
+| `/register` | Plumber registration |
+| `/monitoring` | Main monitoring dashboard |
+| `/sensors` | Sensor readings |
+| `/predictions` | Prediction history |
+| `/analytics` | Analytics |
+| `/alerts` | Alerts and notification settings |
+| `/admin` | Admin operations |
+| `/plumber` | Plumber workspace |
 
 Monitoring pages require an approved plumber or administrator account. The admin and plumber pages require their respective roles.
 
@@ -184,7 +203,14 @@ The root `.env.example` lists the supported variables and example values.
 
 ## Deployment
 
-The repository includes a Render blueprint in `render.yaml`. It deploys a single Node.js web service, installs the Python ML dependencies, and runs the Python worker from the backend. Configure the protected values (`MONGO_URI`, `JWT_SECRET`, ThingSpeak credentials, and any email credentials) in the Render service environment before deploying. Do not put production secrets in `render.yaml` or commit them to Git.
+The repository includes a Render blueprint in `render.yaml`. It deploys a single Node.js web service that:
+
+1. Installs Node.js backend dependencies
+2. Builds the React frontend (`frontend/dist/`)
+3. Installs Python ML dependencies
+4. Starts the Node.js server which serves the React app and runs the Python ML worker
+
+Configure the protected values (`MONGO_URI`, `JWT_SECRET`, ThingSpeak credentials, and any email credentials) in the Render service environment before deploying. Do not put production secrets in `render.yaml` or commit them to Git.
 
 ## Tests
 
