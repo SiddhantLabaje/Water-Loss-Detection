@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isCriticalLeakAlert } from "../services/broadcaster.service.js";
+import { isCriticalLeakAlert } from "../services/criticalLeak.service.js";
 
 test("a new critical leak transition creates an alert incident", () => {
   assert.equal(isCriticalLeakAlert({

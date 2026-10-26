@@ -8,6 +8,7 @@ import MlPrediction from "../models/mlPrediction.model.js";
 import User from "../models/user.model.js";
 import { audit } from "../services/audit.service.js";
 import { sendRepairComplete } from "../services/notification.service.js";
+import { ensureCurrentCriticalLeakIncident } from "../services/criticalLeak.service.js";
 
 const safeFields = "name email accountStatus emailVerified";
 
@@ -35,6 +36,7 @@ export async function updateProfile(req, res) {
 
 export async function listRepairRequests(req, res) {
   try {
+    await ensureCurrentCriticalLeakIncident();
     const page = Math.max(Number(req.query.page) || 1, 1);
     const limit = Math.min(Number(req.query.limit) || 25, 100);
     const [items, total] = await Promise.all([

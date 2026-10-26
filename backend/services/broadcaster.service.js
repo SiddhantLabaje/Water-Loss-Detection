@@ -8,11 +8,15 @@
 
 import MlPrediction    from '../models/mlPrediction.model.js';
 import DashboardAnalytics from '../models/dashboardAnalytics.model.js';
-import LeakEvent from '../models/leakEvent.model.js';
 import { broadcast, clientCount } from './sse.service.js';
 import { sendCriticalAlert } from './email.service.js';
-import { notifyLeakEvent, retryFailedNotifications } from './notification.service.js';
-import { randomBytes } from 'node:crypto';
+import { retryFailedNotifications } from './notification.service.js';
+import {
+  createCriticalLeakEvent,
+  ensureCurrentCriticalLeakIncident,
+  isCriticalLeakAlert,
+  isCriticalLeakPrediction,
+} from "./criticalLeak.service.js";
 
 let lastSeenId        = null;   // _id of the last prediction we processed
 let lastSystemStatus  = null;
@@ -66,63 +70,6 @@ async function buildSnapshot() {
   } catch { /* optional — doesn't block the stream */ }
 
   return { latest, stats, alerts, history, analytics, serverTime: new Date().toISOString() };
-}
-
-export function isCriticalLeakPrediction(prediction) {
-  return prediction.overallSystemStatus === "CRITICAL" &&
-    prediction.mlPredictionData === 1;
-}
-
-export function isCriticalLeakAlert(prediction, previousAlert) {
-  return isCriticalLeakPrediction(prediction) && !previousAlert;
-}
-
-async function createCriticalLeakEvent(prediction) {
-  const existing = await LeakEvent.findOne({ criticalAlertRef: prediction._id }).lean();
-  if (existing) return;
-
-  const severity = String(prediction.mlSeverity || "").toUpperCase();
-  if (!["LOW", "MEDIUM", "HIGH"].includes(severity)) {
-    console.error(`[LEAK] Skipping prediction ${prediction._id}: severity is unavailable.`);
-    return;
-  }
-
-  const now = new Date();
-  const incidentId = `WLD-${now.toISOString().slice(0, 10).replace(/-/g, "")}-${randomBytes(3).toString("hex").toUpperCase()}`;
-  let leak;
-  try {
-    leak = await LeakEvent.create({
-      incidentId,
-      criticalAlertRef: prediction._id,
-      predictionRef: prediction._id,
-      lastProcessedPredictionId: prediction._id,
-      severity,
-      status: "OPEN_FOR_PROPOSALS",
-      sensorSnapshot: {
-        flowSensorData: prediction.flowSensorData,
-        pressureSensorData: prediction.pressureSensorData,
-        tankLevelSensorData: prediction.tankLevelSensorData,
-        turbiditySensorData: prediction.turbiditySensorData,
-        mlProbability: prediction.mlProbability,
-        mlSeverity: prediction.mlSeverity,
-        waterLossRate: prediction.waterLossRate,
-        overallSystemStatus: prediction.overallSystemStatus,
-        detectedAt: prediction.mlProcessedAt ? new Date(prediction.mlProcessedAt) : now,
-      },
-      statusHistory: [{ status: "OPEN_FOR_PROPOSALS", reason: "Automatically created from a critical leak alert." }],
-    });
-  } catch (err) {
-    if (err.code === 11000) {
-      console.error(`[LEAK] Incident already exists for critical alert ${prediction._id}.`);
-      return;
-    }
-    throw err;
-  }
-
-  console.log(`[LEAK] Created repair incident ${leak.incidentId} from critical alert ${prediction._id}.`);
-  notifyLeakEvent(leak).catch((err) => {
-    console.error(`[EMAIL] Leak notification preparation failed for ${leak.incidentId}: ${err.message}`);
-  });
 }
 
 /**
@@ -205,33 +152,7 @@ export async function startBroadcaster() {
 
     if (lastCriticalLeak) {
       try {
-        const previousNonAlert = await MlPrediction.findOne({
-          _id: { $lt: latest._id },
-          $or: [
-            { overallSystemStatus: { $ne: "CRITICAL" } },
-            { mlPredictionData: { $ne: 1 } },
-          ],
-        })
-          .sort({ _id: -1 })
-          .select("_id overallSystemStatus mlPredictionData")
-          .lean();
-        const firstCriticalLeak = await MlPrediction.findOne({
-          _id: {
-            ...(previousNonAlert ? { $gt: previousNonAlert._id } : {}),
-            $lte: latest._id,
-          },
-          overallSystemStatus: "CRITICAL",
-          mlPredictionData: 1,
-        })
-          .sort({ _id: 1 })
-          .lean();
-
-        if (firstCriticalLeak && isCriticalLeakAlert(
-          firstCriticalLeak,
-          previousNonAlert ? isCriticalLeakPrediction(previousNonAlert) : false
-        )) {
-          await createCriticalLeakEvent(firstCriticalLeak);
-        }
+        await ensureCurrentCriticalLeakIncident();
       } catch (err) {
         console.error(`[LEAK] Startup: failed to recover the current critical alert: ${err.message}`);
       }

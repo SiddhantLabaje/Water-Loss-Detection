@@ -7,6 +7,7 @@ import RepairAssignment from "../models/repairAssignment.model.js";
 import AuditLog from "../models/auditLog.model.js";
 import MlPrediction from "../models/mlPrediction.model.js";
 import { audit } from "../services/audit.service.js";
+import { ensureCurrentCriticalLeakIncident } from "../services/criticalLeak.service.js";
 import {
   sendPlumberInvite,
   sendPlumberApproved,
@@ -230,6 +231,7 @@ export async function updatePlumberStatus(req, res) {
 // GET /api/admin/leaks
 export async function listLeaks(req, res) {
   try {
+    await ensureCurrentCriticalLeakIncident();
     const { status, severity, page = 1, limit = 20 } = req.query;
     const filter = {};
     if (status)   filter.status   = status;
