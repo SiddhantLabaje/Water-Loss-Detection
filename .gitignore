@@ -10,10 +10,12 @@ node_modules/
 __pycache__/
 *.py[cod]
 *.egg-info/
-dist/
 build/
 .venv/
 venv/
+
+# Python dist only (NOT frontend/dist — that is the React build we need deployed)
+ai-smart-water-ml/dist/
 
 # Required trained models for the deployed prediction worker
 !ai-smart-water-ml/models/leak_detection/current_model.pkl

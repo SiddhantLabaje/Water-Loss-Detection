@@ -1,39 +1,32 @@
 services:
-  # ── Single web service: Node.js backend + Python ML in one process ────────
+  # ── Single web service: Node.js + React frontend + Python ML ─────────────
   - type: web
     name: smart-water-monitor
     runtime: node
-    rootDir: backend
-    # 1. Install backend Node deps
-    # 2. Install frontend deps and build the React SPA → frontend/dist
-    # 3. Install Python ML deps (used by the embedded ML runner)
-    buildCommand: >
-      npm install &&
-      cd ../frontend && npm install && npm run build &&
-      cd .. && pip install -r ai-smart-water-ml/requirements.txt
-    startCommand: npm start
+    # rootDir is NOT set — build runs from the repo root
+    # Build steps (run in sequence from repo root):
+    #   1. Install backend deps
+    #   2. Install frontend deps and build React SPA  →  frontend/dist/
+    #   3. Install Python ML deps
+    buildCommand: "cd backend && npm install && cd ../frontend && npm install && npm run build && cd .. && pip install -r ai-smart-water-ml/requirements.txt"
+    startCommand: "cd backend && node server.js"
     envVars:
       - key: NODE_ENV
         value: production
-      # Render sets this automatically — used by keepAlive and email links
       - key: RENDER_EXTERNAL_URL
         fromService:
           type: web
           name: smart-water-monitor
           property: host
-      # CORS: restrict to the deployed URL in production
       - key: WEB_ORIGINS
         fromService:
           type: web
           name: smart-water-monitor
           property: host
-      # Python executable on Render (Linux)
       - key: PYTHON_BIN
         value: python3
-      # ML runner interval (ms) — 15 s matches ThingSpeak poll rate
       - key: ML_RUN_INTERVAL_MS
         value: "15000"
-      # ML pipeline thresholds (safe defaults)
       - key: MONGO_DATABASE
         value: water_loss_detection
       - key: MONGO_COLLECTION
@@ -52,7 +45,7 @@ services:
         value: "3"
       - key: RECOVERY_MAX_AGE_MINUTES
         value: "5"
-      # ── Secrets: set these in the Render dashboard ─────────────────────
+      # ── Set these in the Render dashboard — never commit secrets ──────────
       - key: MONGO_URI
         sync: false
       - key: JWT_SECRET
