@@ -13,6 +13,11 @@ const leakEventSchema = new mongoose.Schema(
       ref: "MlPrediction",
       required: true,
     },
+    criticalAlertRef: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "MlPrediction",
+      default: undefined,
+    },
     // Sensor snapshot at detection time
     sensorSnapshot: {
       flowSensorData:      { type: Number },
@@ -52,8 +57,7 @@ const leakEventSchema = new mongoose.Schema(
       plumbersNotified: { type: Number, default: 0 },
       lastNotifiedAt: { type: Date, default: null },
     },
-    // Deduplication — track the prediction ID that opened this event
-    // to prevent re-opening for the same continuous leak
+    // Track the most recently processed prediction associated with this event.
     lastProcessedPredictionId: { type: mongoose.Schema.Types.ObjectId, default: null },
     statusHistory: [
       {
@@ -71,6 +75,7 @@ leakEventSchema.index({ status: 1 });
 leakEventSchema.index({ severity: 1 });
 leakEventSchema.index({ createdAt: -1 });
 leakEventSchema.index({ activeKey: 1 }, { unique: true, sparse: true });
+leakEventSchema.index({ criticalAlertRef: 1 }, { unique: true, sparse: true });
 
 const LeakEvent = mongoose.model("LeakEvent", leakEventSchema);
 export default LeakEvent;

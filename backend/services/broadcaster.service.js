@@ -67,43 +67,29 @@ async function buildSnapshot() {
   return { latest, stats, alerts, history, analytics, serverTime: new Date().toISOString() };
 }
 
-async function createOrUpdateLeakEvent(prediction) {
+export function isCriticalLeakAlert(prediction, previousStatus) {
+  return prediction.overallSystemStatus === "CRITICAL" &&
+    previousStatus !== "CRITICAL" &&
+    prediction.mlPredictionData === 1;
+}
+
+async function createCriticalLeakEvent(prediction) {
+  const existing = await LeakEvent.findOne({ criticalAlertRef: prediction._id }).lean();
+  if (existing) return;
+
   const severity = String(prediction.mlSeverity || "").toUpperCase();
   if (!["LOW", "MEDIUM", "HIGH"].includes(severity)) {
     console.error(`[LEAK] Skipping prediction ${prediction._id}: severity is unavailable.`);
     return;
   }
 
-  let leak = await LeakEvent.findOne({ activeKey: "system-active" });
-  if (leak) {
-    leak.severity = ["LOW", "MEDIUM", "HIGH"].indexOf(severity) >
-      ["LOW", "MEDIUM", "HIGH"].indexOf(leak.severity) ? severity : leak.severity;
-    leak.predictionRef = prediction._id;
-    leak.lastProcessedPredictionId = prediction._id;
-    leak.sensorSnapshot = {
-      flowSensorData: prediction.flowSensorData,
-      pressureSensorData: prediction.pressureSensorData,
-      tankLevelSensorData: prediction.tankLevelSensorData,
-      turbiditySensorData: prediction.turbiditySensorData,
-      mlProbability: prediction.mlProbability,
-      mlSeverity: prediction.mlSeverity,
-      waterLossRate: prediction.waterLossRate,
-      overallSystemStatus: prediction.overallSystemStatus,
-      detectedAt: prediction.mlProcessedAt ? new Date(prediction.mlProcessedAt) : new Date(),
-    };
-    await leak.save();
-    notifyLeakEvent(leak).catch((err) => {
-      console.error(`[EMAIL] Leak notification preparation failed for ${leak.incidentId}: ${err.message}`);
-    });
-    return;
-  }
-
   const now = new Date();
   const incidentId = `WLD-${now.toISOString().slice(0, 10).replace(/-/g, "")}-${randomBytes(3).toString("hex").toUpperCase()}`;
+  let leak;
   try {
     leak = await LeakEvent.create({
       incidentId,
-      activeKey: "system-active",
+      criticalAlertRef: prediction._id,
       predictionRef: prediction._id,
       lastProcessedPredictionId: prediction._id,
       severity,
@@ -119,14 +105,17 @@ async function createOrUpdateLeakEvent(prediction) {
         overallSystemStatus: prediction.overallSystemStatus,
         detectedAt: prediction.mlProcessedAt ? new Date(prediction.mlProcessedAt) : now,
       },
-      statusHistory: [{ status: "OPEN_FOR_PROPOSALS", reason: "Automatically created from a positive leak prediction." }],
+      statusHistory: [{ status: "OPEN_FOR_PROPOSALS", reason: "Automatically created from a critical leak alert." }],
     });
   } catch (err) {
-    if (err.code === 11000) return;
+    if (err.code === 11000) {
+      console.error(`[LEAK] Incident already exists for critical alert ${prediction._id}.`);
+      return;
+    }
     throw err;
   }
 
-  console.log(`[LEAK] Created repair incident ${leak.incidentId} from prediction ${prediction._id}.`);
+  console.log(`[LEAK] Created repair incident ${leak.incidentId} from critical alert ${prediction._id}.`);
   notifyLeakEvent(leak).catch((err) => {
     console.error(`[EMAIL] Leak notification preparation failed for ${leak.incidentId}: ${err.message}`);
   });
@@ -154,9 +143,9 @@ async function tick() {
       const previousStatus = lastSystemStatus;
       lastSystemStatus = prediction.overallSystemStatus;
 
-      if (prediction.mlPredictionData === 1) {
+      if (isCriticalLeakAlert(prediction, previousStatus)) {
         try {
-          await createOrUpdateLeakEvent(prediction);
+          await createCriticalLeakEvent(prediction);
         } catch (err) {
           console.error(`[LEAK] Incident processing failed for prediction ${prediction._id}: ${err.message}`);
         }
@@ -198,23 +187,6 @@ export async function getInitialSnapshot() {
 }
 
 export async function startBroadcaster() {
-  // On startup, scan ALL existing leak predictions that don't yet have
-  // a LeakEvent — this handles the case where the server restarted and
-  // predictions arrived while it was down.
-  const leakPredictions = await MlPrediction.find({ mlPredictionData: 1 })
-    .sort({ _id: 1 })
-    .lean();
-
-  for (const prediction of leakPredictions) {
-    try {
-      await createOrUpdateLeakEvent(prediction);
-    } catch (err) {
-      console.error(`[LEAK] Startup: failed to process prediction ${prediction._id}: ${err.message}`);
-    }
-  }
-
-  // Set lastSeenId to the very latest prediction so the poll loop
-  // only looks at NEW predictions from this point forward.
   const latest = await MlPrediction.findOne()
     .sort({ _id: -1 })
     .select('_id overallSystemStatus')
@@ -223,6 +195,33 @@ export async function startBroadcaster() {
   if (latest) {
     lastSeenId       = latest._id.toString();
     lastSystemStatus = latest.overallSystemStatus;
+
+    if (latest.overallSystemStatus === "CRITICAL") {
+      try {
+        const previousNonCritical = await MlPrediction.findOne({
+          _id: { $lt: latest._id },
+          overallSystemStatus: { $ne: "CRITICAL" },
+        })
+          .sort({ _id: -1 })
+          .select("_id overallSystemStatus")
+          .lean();
+        const firstCritical = await MlPrediction.findOne({
+          _id: {
+            ...(previousNonCritical ? { $gt: previousNonCritical._id } : {}),
+            $lte: latest._id,
+          },
+          overallSystemStatus: "CRITICAL",
+        })
+          .sort({ _id: 1 })
+          .lean();
+
+        if (firstCritical && isCriticalLeakAlert(firstCritical, previousNonCritical?.overallSystemStatus ?? null)) {
+          await createCriticalLeakEvent(firstCritical);
+        }
+      } catch (err) {
+        console.error(`[LEAK] Startup: failed to recover the current critical alert: ${err.message}`);
+      }
+    }
   }
 
   setInterval(tick, 5000);
