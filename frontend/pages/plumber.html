@@ -59,7 +59,7 @@
 </head>
 <body>
 <aside class="sidebar">
-  <div class="sb-brand"><div class="sb-logo">💧</div><div><div class="sb-name">Smart Water</div><div class="sb-sub">Plumber portal</div></div></div>
+  <div class="sb-brand"><div class="sb-logo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5C9.4 6.1 5.5 10.1 5.5 14.2a6.5 6.5 0 0 0 13 0C18.5 10.1 14.6 6.1 12 2.5Z" fill="currentColor"/></svg></div><div><div class="sb-name">Smart Water</div><div class="sb-sub">Plumber portal</div></div></div>
   <div class="sb-section-label">My workspace</div>
   <nav>
     <a class="active" href="plumber.html">Repair workspace</a>
@@ -82,7 +82,7 @@
     <!-- pending / rejected state -->
     <section id="pending-section" hidden>
       <div class="pending-card">
-        <div style="font-size:40px;margin-bottom:12px">⏳</div>
+        <div style="font-size:32px;margin-bottom:12px" aria-hidden="true">◷</div>
         <h2>Account pending approval</h2>
         <p id="pending-msg" class="muted">An administrator must approve your plumber profile before repair requests are available.</p>
       </div>
@@ -94,7 +94,7 @@
       <!-- ── STEP 1: Available repair requests ── -->
       <div style="margin-bottom:24px">
         <div class="sec-header">
-          <span class="sec-title">🚨 Available repair requests</span>
+          <span class="sec-title"><span class="symbol-alert" aria-hidden="true">!</span> Available repair requests</span>
           <span id="request-count" class="metric-sub"></span>
         </div>
         <div id="requests" class="stack"></div>
@@ -102,13 +102,13 @@
 
       <!-- ── STEP 2: My proposals ── -->
       <div style="margin-bottom:24px">
-        <div class="sec-header"><span class="sec-title">📋 My proposals</span></div>
+        <div class="sec-header"><span class="sec-title">▤ My proposals</span></div>
         <div id="proposals" class="stack"></div>
       </div>
 
       <!-- ── STEP 3: My assignments ── -->
       <div>
-        <div class="sec-header"><span class="sec-title">🔧 My assignments</span></div>
+        <div class="sec-header"><span class="sec-title">⌁ My assignments</span></div>
         <div id="assignments" class="stack"></div>
       </div>
 
@@ -197,12 +197,12 @@ function renderRequests(items) {
         <div>
           <div class="rc-title">
             ${esc(item.incidentId)}
-            ${ss.overallSystemStatus==='CRITICAL'?'<span style="color:var(--danger);font-size:12px;font-weight:800;margin-left:8px">🚨 CRITICAL ALERT</span>':''}
+            ${ss.overallSystemStatus==='CRITICAL'?'<span style="color:var(--danger);font-size:12px;font-weight:800;margin-left:8px"><span class="symbol-alert" aria-hidden="true">!</span> CRITICAL ALERT</span>':''}
             &nbsp;<span style="color:${sevColor(sev)};font-size:13px;font-weight:700">${esc(sev)} SEVERITY</span>
           </div>
           <div class="rc-meta">
-            <span>🕐 Detected: ${esc(det)}</span>
-            <span>📉 Water loss: <strong>${esc(ss.waterLossRate!=null?Number(ss.waterLossRate).toFixed(2):'—')} L/hr</strong></span>
+            <span>◷ Detected: ${esc(det)}</span>
+            <span>↘ Water loss: <strong>${esc(ss.waterLossRate!=null?Number(ss.waterLossRate).toFixed(2):'—')} L/hr</strong></span>
           </div>
         </div>
         <span class="badge b-amber">Open for proposals</span>
@@ -219,7 +219,7 @@ function renderRequests(items) {
       </div>
 
       <div class="rc-foot">
-        <button class="btn" data-action="toggle-proposal" data-id="${esc(item._id)}">📝 Submit cost estimate</button>
+        <button class="btn" data-action="toggle-proposal" data-id="${esc(item._id)}">▤ Submit cost estimate</button>
         <span class="metric-sub">Review sensor data above and submit your repair estimate</span>
       </div>
 
@@ -242,7 +242,7 @@ function renderRequests(items) {
             <textarea name="notes" maxlength="1000"></textarea>
           </label>
           <div class="wide pf-total" id="total-${esc(item._id)}">Total estimate: ₹0</div>
-          <button class="btn wide" type="submit" style="background:var(--success)">✔ Submit estimate to admin</button>
+          <button class="btn wide" type="submit" style="background:var(--success)">✓ Submit estimate to admin</button>
         </form>
       </div>
     </div>`;
@@ -278,7 +278,7 @@ function renderProposals(proposals) {
         <span>Submitted: ${new Date(p.createdAt).toLocaleDateString()}</span>
       </div>
       <div style="font-size:13px;color:var(--text-2);margin-bottom:8px">${esc(p.repairMethod)}</div>
-      ${p.status==='selected'?'<div class="badge b-green" style="display:inline-flex">✅ Your proposal was selected — check assignments below</div>':''}
+      ${p.status==='selected'?'<div class="badge b-green" style="display:inline-flex">✓ Your proposal was selected — check assignments below</div>':''}
       ${p.status==='submitted'?`<button class="btn btn-ghost" data-action="withdraw" data-id="${esc(p._id)}" style="color:var(--danger);border-color:var(--danger-bd)">Withdraw proposal</button>`:''}
     </div>`;
   }).join('');
@@ -320,8 +320,8 @@ function renderAssignments(assignments) {
       </div>
       <div class="ac-foot">
         ${nextLabel?`<button class="btn" data-action="assignment-status" data-id="${esc(item._id)}" data-status="${nextVal}" style="${nextVal==='accepted'?'background:var(--success)':''}">${nextLabel}</button>`:''}
-        ${st==='in_progress'?`<button class="btn btn-ghost" data-action="toggle-completion" data-id="${esc(item._id)}">📋 Submit completion report</button>`:''}
-        ${st==='completed'?'<span class="badge b-green">✅ Repair submitted — awaiting admin verification</span>':''}
+        ${st==='in_progress'?`<button class="btn btn-ghost" data-action="toggle-completion" data-id="${esc(item._id)}">▤ Submit completion report</button>`:''}
+        ${st==='completed'?'<span class="badge b-green">✓ Repair submitted — awaiting admin verification</span>':''}
       </div>
 
       <div class="completion-form" id="cf-${esc(item._id)}">
@@ -342,7 +342,7 @@ function renderAssignments(assignments) {
             <input name="furtherWorkRequired" type="checkbox" style="width:16px;height:16px">
             Further work is required (e.g. waiting for parts, inspection needed)
           </label>
-          <button class="btn wide" type="submit" style="background:var(--success)">✔ Submit completion report</button>
+          <button class="btn wide" type="submit" style="background:var(--success)">✓ Submit completion report</button>
         </form>
       </div>
     </div>`;

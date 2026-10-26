@@ -68,7 +68,7 @@
 </head>
 <body>
 <aside class="sidebar">
-  <div class="sb-brand"><div class="sb-logo">💧</div><div><div class="sb-name">Smart Water</div><div class="sb-sub">Admin portal</div></div></div>
+  <div class="sb-brand"><div class="sb-logo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5C9.4 6.1 5.5 10.1 5.5 14.2a6.5 6.5 0 0 0 13 0C18.5 10.1 14.6 6.1 12 2.5Z" fill="currentColor"/></svg></div><div><div class="sb-name">Smart Water</div><div class="sb-sub">Admin portal</div></div></div>
   <div class="sb-section-label">Operations</div>
   <nav>
     <a class="active" href="admin.html">Admin overview</a>
@@ -96,7 +96,7 @@
     <section id="critical-banner" hidden>
       <div class="alert-banner">
         <div>
-          <h3>🚨 Leak detected — action required</h3>
+          <h3><span aria-hidden="true" class="symbol-alert">!</span> Leak detected — action required</h3>
           <p id="critical-banner-text"></p>
         </div>
         <button class="btn" style="background:var(--danger);flex-shrink:0"
@@ -274,16 +274,16 @@ async function loadLeaks() {
         <div>
           <div class="ic-title">
             ${esc(leak.incidentId)}
-            ${isCritical?'<span style="color:var(--danger);font-size:12px;font-weight:800;margin-left:8px">🚨 CRITICAL ALERT</span>':''}
+            ${isCritical?'<span style="color:var(--danger);font-size:12px;font-weight:800;margin-left:8px"><span aria-hidden="true" class="symbol-alert">!</span> CRITICAL ALERT</span>':''}
             &nbsp;<span style="color:${sevColor(sev)};font-size:13px">${esc(sev)} severity</span>
           </div>
           <div class="ic-meta">
-            <span>🕐 Detected: ${esc(det)}</span>
-            <span>📍 ${statusBadge(leak.status)}</span>
+            <span>◷ Detected: ${esc(det)}</span>
+            <span>⌖ ${statusBadge(leak.status)}</span>
           </div>
         </div>
         <div style="text-align:right">
-          ${isOpen?`<div style="font-size:11px;font-weight:700;color:var(--danger);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">⚠ Needs plumber assignment</div>`:''}
+          ${isOpen?`<div style="font-size:11px;font-weight:700;color:var(--danger);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px"><span aria-hidden="true" class="symbol-alert">!</span> Needs plumber assignment</div>`:''}
           ${statusBadge(leak.status)}
         </div>
       </div>
@@ -313,9 +313,9 @@ async function loadLeaks() {
         ${leak.status==='DETECTED'
           ?`<button class="btn" data-action="open" data-id="${esc(leak._id)}" style="background:var(--warning)">Open for proposals</button>`:''}
         ${isOpen
-          ?`<button class="btn" data-action="proposals" data-id="${esc(leak._id)}">🔧 View proposals &amp; assign plumber</button>`:''}
+          ?`<button class="btn" data-action="proposals" data-id="${esc(leak._id)}">View proposals &amp; assign plumber</button>`:''}
         ${leak.status==='VERIFYING_RECOVERY'
-          ?`<button class="btn" data-action="verify" data-id="${esc(leak._id)}" style="background:var(--success)">✔ Verify recovery</button>`:''}
+          ?`<button class="btn" data-action="verify" data-id="${esc(leak._id)}" style="background:var(--success)">✓ Verify recovery</button>`:''}
         ${leak.status==='RECOVERY_FAILED'
           ?`<button class="btn btn-ghost" data-action="retry-verification" data-id="${esc(leak._id)}">Retry recovery check</button>`:''}
         ${isOpen
@@ -345,7 +345,7 @@ async function showProposals(incidentId) {
 
   panel.innerHTML = `
     <div class="proposals-panel">
-      <div class="pp-title">📋 ${sorted.length} proposal${sorted.length>1?'s':''} received — compare estimate, experience, and skills before assigning</div>
+      <div class="pp-title">▤ ${sorted.length} proposal${sorted.length>1?'s':''} received — compare estimate, experience, and skills before assigning</div>
       ${sorted.map(p => {
         const avail  = p.earliestAvailability ? new Date(p.earliestAvailability).toLocaleDateString() : '—';
         return `

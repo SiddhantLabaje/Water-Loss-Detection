@@ -10,6 +10,8 @@
     .wrap { width: min(500px, calc(100% - 32px)); margin: 6vh auto; }
     .card { background: #fff; padding: 32px; border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }
     .card h1 { font-size: 22px; margin-bottom: 4px; }
+    .water-symbol { width: 22px; height: 22px; color: var(--primary); vertical-align: -3px; }
+    .symbol-alert { display: inline-grid; width: 14px; height: 14px; place-items: center; border: 1.5px solid currentColor; border-radius: 50%; font-size: 10px; font-weight: 800; line-height: 1; vertical-align: -1px; }
     .card .subtitle { color: var(--muted); margin-bottom: 24px; font-size: 14px; }
     .form-grid { display: grid; gap: 14px; }
     .form-grid label { display: grid; gap: 6px; font-weight: 600; font-size: 14px; }
@@ -31,7 +33,7 @@
     <section class="card">
 
       <div id="setup-form-section">
-        <h1>💧 First-time setup</h1>
+        <h1><svg class="water-symbol" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5C9.4 6.1 5.5 10.1 5.5 14.2a6.5 6.5 0 0 0 13 0C18.5 10.1 14.6 6.1 12 2.5Z" fill="currentColor"/></svg> First-time setup</h1>
         <p class="subtitle">Create the initial administrator account. This page becomes inactive once an admin exists.</p>
 
         <form id="setup-form" class="form-grid" novalidate>
@@ -57,16 +59,16 @@
         <div id="msg" class="msg" role="status" aria-live="polite"></div>
 
         <p class="note">
-          ⚠️ <strong>After creating the admin account, remove or blank <code>ADMIN_BOOTSTRAP_KEY</code> from your <code>.env</code> file</strong> to disable this page permanently.
+          <span class="symbol-alert" aria-hidden="true">!</span> <strong>After creating the admin account, remove or blank <code>ADMIN_BOOTSTRAP_KEY</code> from your <code>.env</code> file</strong> to disable this page permanently.
         </p>
       </div>
 
       <div class="done-card" id="done-section">
-        <h2>✅ Admin account created</h2>
+        <h2><span aria-hidden="true">✓</span> Admin account created</h2>
         <p>You can now sign in with the credentials you just set.</p>
         <a href="login.html" class="btn">Go to login</a>
         <p class="note" style="margin-top:18px;text-align:left">
-          ⚠️ <strong>Remove <code>ADMIN_BOOTSTRAP_KEY</code> from your <code>.env</code></strong> now to prevent this page from being used again.
+          <span class="symbol-alert" aria-hidden="true">!</span> <strong>Remove <code>ADMIN_BOOTSTRAP_KEY</code> from your <code>.env</code></strong> now to prevent this page from being used again.
         </p>
       </div>
 

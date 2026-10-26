@@ -81,6 +81,7 @@ body {
   flex-shrink: 0;
 }
 .sb-logo svg { width: 16px; height: 16px; fill: #fff; }
+.symbol-alert { display: inline-grid; width: 14px; height: 14px; place-items: center; border: 1.5px solid currentColor; border-radius: 50%; font-size: 10px; font-weight: 800; line-height: 1; vertical-align: -1px; }
 .sb-name   { font-size: 13px; font-weight: 700; color: #fff; line-height: 1.2; }
 .sb-sub    { font-size: 10px; color: #6f6f6f; margin-top: 1px; }
 

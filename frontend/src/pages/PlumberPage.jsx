@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { api, post, patch, number } from "../api";
-import { useLoad, useLiveReload, PageHeading, Card, Badge, Loading, Message } from "../App";
+import { useLoad, useLiveReload, PageHeading, Card, Badge, Loading, Message, Icon } from "../App";
 
 const sevColor = (s) =>
   s === "HIGH" ? "var(--danger)" : s === "MEDIUM" ? "var(--warning)" : "var(--success)";
@@ -126,7 +126,7 @@ function ProposalForm({ incident, onSubmitted }) {
         <div className="wide pf-total">Total estimate: ₹{total.toLocaleString()}</div>
         {err && <div className="wide" style={{ color: "var(--danger)", fontSize: 13 }}>{err}</div>}
         <button className="btn wide" type="submit" disabled={busy} style={{ background: "var(--success)" }}>
-          {busy ? "Submitting…" : "✔ Submit estimate to admin"}
+          {busy ? "Submitting…" : <><Icon name="check" /> Submit estimate to admin</>}
         </button>
       </form>
     </div>
@@ -197,7 +197,7 @@ function CompletionForm({ assignment, proposal, onSubmitted }) {
         </label>
         {err && <div className="wide" style={{ color: "var(--danger)", fontSize: 13 }}>{err}</div>}
         <button className="btn wide" type="submit" disabled={busy} style={{ background: "var(--success)" }}>
-          {busy ? "Submitting…" : "✔ Submit completion report"}
+          {busy ? "Submitting…" : <><Icon name="check" /> Submit completion report</>}
         </button>
       </form>
     </div>
@@ -262,7 +262,7 @@ export default function PlumberPage() {
         description="Leak requests · Your proposals · Active assignments"
         action={
           <button className="btn btn-light" onClick={reload}>
-            ↻ Refresh
+            <Icon name="refresh" /> Refresh
           </button>
         }
       />
@@ -275,7 +275,7 @@ export default function PlumberPage() {
       <section>
         <div className="sec-header">
           <span className="sec-title">
-            🚨 Available repair requests
+            <Icon name="alerts" /> Available repair requests
           </span>
           <span style={{ fontSize: 12, color: "var(--muted)" }}>
             {requests.length > 0 ? `${requests.length} open` : ""}
@@ -307,7 +307,7 @@ export default function PlumberPage() {
                         {item.incidentId}
                         {ss.overallSystemStatus === "CRITICAL" && (
                           <span style={{ color: "var(--danger)", fontSize: 12, fontWeight: 800, marginLeft: 8 }}>
-                            🚨 CRITICAL ALERT
+                            <><Icon name="alerts" /> CRITICAL ALERT</>
                           </span>
                         )}
                         &nbsp;
@@ -316,8 +316,8 @@ export default function PlumberPage() {
                         </span>
                       </div>
                       <div className="rc-meta">
-                        <span>🕐 Detected: {det}</span>
-                        <span>📉 Water loss: <strong>{ss.waterLossRate != null ? Number(ss.waterLossRate).toFixed(2) : "—"} L/hr</strong></span>
+                        <span><Icon name="clock" /> Detected: {det}</span>
+                        <span><Icon name="loss" /> Water loss: <strong>{ss.waterLossRate != null ? Number(ss.waterLossRate).toFixed(2) : "—"} L/hr</strong></span>
                       </div>
                     </div>
                     <Badge tone="amber">Open for proposals</Badge>
@@ -348,7 +348,7 @@ export default function PlumberPage() {
                       className="btn"
                       onClick={() => toggleForm(item._id, "forms", setOpenForms)}
                     >
-                      📝 {isOpen ? "Hide estimate form" : "Submit cost estimate"}
+                      <><Icon name="document" /> {isOpen ? "Hide estimate form" : "Submit cost estimate"}</>
                     </button>
                     <span style={{ fontSize: 12, color: "var(--muted)" }}>
                       Review sensor data above and submit your repair estimate
@@ -375,7 +375,7 @@ export default function PlumberPage() {
       {/* STEP 2: My proposals */}
       <section>
         <div className="sec-header">
-          <span className="sec-title">📋 My proposals</span>
+          <span className="sec-title"><Icon name="clipboard" /> My proposals</span>
         </div>
         {proposals.length === 0 ? (
           <Card>
@@ -404,7 +404,7 @@ export default function PlumberPage() {
                   <div style={{ fontSize: 13, color: "var(--text-2)", marginBottom: 8 }}>{p.repairMethod}</div>
                   {p.status === "selected" && (
                     <div className="badge badge-green" style={{ display: "inline-flex" }}>
-                      ✅ Your proposal was selected — check assignments below
+                      <><Icon name="check" /> Your proposal was selected — check assignments below</>
                     </div>
                   )}
                   {p.status === "submitted" && (
@@ -426,7 +426,7 @@ export default function PlumberPage() {
       {/* STEP 3: My assignments */}
       <section>
         <div className="sec-header">
-          <span className="sec-title">🔧 My assignments</span>
+          <span className="sec-title"><Icon name="repair" /> My assignments</span>
         </div>
         {assignments.length === 0 ? (
           <Card>
@@ -499,11 +499,11 @@ export default function PlumberPage() {
                           setOpenCompletions((prev) => ({ ...prev, [item._id]: !prev[item._id] }))
                         }
                       >
-                        📋 {showCompletion ? "Hide report" : "Submit completion report"}
+                        <><Icon name="clipboard" /> {showCompletion ? "Hide report" : "Submit completion report"}</>
                       </button>
                     )}
                     {st === "completed" && (
-                      <span className="badge badge-green">✅ Repair submitted — awaiting admin verification</span>
+                      <span className="badge badge-green"><Icon name="check" /> Repair submitted — awaiting admin verification</span>
                     )}
                   </div>
 

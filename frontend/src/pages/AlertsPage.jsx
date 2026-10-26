@@ -5,6 +5,7 @@ import {
   Loading,
   Message,
   PageHeading,
+  Icon,
   useLoad,
 } from "../App";
 import { api, formatDate, number } from "../api";
@@ -69,7 +70,11 @@ export default function AlertsPage() {
                   {alert.overallSystemStatus}
                 </Badge>
                 <span>
-                  {alert.mlPredictionData === 1 ? "🚨 Leak detected" : "⚠️  Warning"}
+                  {alert.mlPredictionData === 1 ? (
+                    <><Icon name="alerts" /> Leak detected</>
+                  ) : (
+                    <><Icon name="warning" /> Warning</>
+                  )}
                 </span>
                 <span>Probability: {number(alert.mlProbability)}%</span>
                 <span>Loss: {number(alert.waterLossRate, 2)} L/hr</span>

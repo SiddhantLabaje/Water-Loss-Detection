@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { api, post, patch, formatDate, number } from "../api";
-import { useLoad, useLiveReload, PageHeading, Card, Badge, Loading, Message } from "../App";
+import { useLoad, useLiveReload, PageHeading, Card, Badge, Loading, Message, Icon } from "../App";
 
 // ── helpers ──────────────────────────────────────────────────────────────
 const sevColor = (s) =>
@@ -67,7 +67,7 @@ function ProposalsPanel({ incidentId, onAssigned }) {
   return (
     <div className="proposals-panel">
       <div className="pp-title">
-        📋 {sorted.length} proposal{sorted.length !== 1 ? "s" : ""} received — compare and assign
+        <Icon name="clipboard" /> {sorted.length} proposal{sorted.length !== 1 ? "s" : ""} received — compare and assign
       </div>
       {msg && (
         <div style={{ padding: "10px 18px" }}>
@@ -193,21 +193,21 @@ function IncidentCard({ leak, onAction }) {
             {leak.incidentId}
             {isCritical && (
               <span style={{ color: "var(--danger)", fontSize: 12, fontWeight: 800, marginLeft: 8 }}>
-                🚨 CRITICAL ALERT
+                <><Icon name="alerts" /> CRITICAL ALERT</>
               </span>
             )}
             &nbsp;
             <span style={{ color: sevColor(sev), fontSize: 13 }}>{sev} severity</span>
           </div>
           <div className="ic-meta">
-            <span>🕐 Detected: {det}</span>
-            <span>📍 {statusBadge(leak.status)}</span>
+            <span><Icon name="clock" /> Detected: {det}</span>
+            <span>{statusBadge(leak.status)}</span>
           </div>
         </div>
         <div style={{ textAlign: "right" }}>
           {isOpen && (
             <div style={{ fontSize: 11, fontWeight: 700, color: "var(--danger)", textTransform: "uppercase", marginBottom: 4 }}>
-              ⚠ Needs plumber assignment
+              <><Icon name="warning" /> Needs plumber assignment</>
             </div>
           )}
           {statusBadge(leak.status)}
@@ -250,13 +250,13 @@ function IncidentCard({ leak, onAction }) {
         )}
         {isOpen && (
           <button className="btn" onClick={() => setShowProposals((v) => !v)}>
-            🔧 {showProposals ? "Hide proposals" : "View proposals & assign plumber"}
+            <><Icon name="repair" /> {showProposals ? "Hide proposals" : "View proposals & assign plumber"}</>
           </button>
         )}
         {leak.status === "VERIFYING_RECOVERY" && (
           <button className="btn" disabled={busy} onClick={() => doAction("verify")}
             style={{ background: "var(--success)" }}>
-            ✔ Verify recovery
+            <><Icon name="check" /> Verify recovery</>
           </button>
         )}
         {leak.status === "RECOVERY_FAILED" && (
@@ -470,7 +470,7 @@ export default function AdminPage() {
       {openCount > 0 && (
         <div className="alert-banner">
           <div>
-            <h3>🚨 Leak detected — action required</h3>
+            <h3><Icon name="alerts" /> Leak detected — action required</h3>
             <p>
               {openCount} incident{openCount > 1 ? "s are" : " is"} open for proposals. Review
               sensor data below and assign a plumber.
