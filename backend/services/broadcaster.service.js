@@ -111,7 +111,7 @@ async function tick() {
       }
     }
 
-    if (foundNew && clientCount() > 0) {
+    if (foundNew) {
       const snapshot = await buildSnapshot();
       broadcast('snapshot', snapshot);
       console.log(`[SSE] Broadcasted snapshot to ${clientCount()} client(s) after processing new predictions.`);

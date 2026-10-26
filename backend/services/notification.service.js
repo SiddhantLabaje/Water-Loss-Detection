@@ -137,10 +137,18 @@ export async function notifyLeakEvent(leakEvent) {
       .populate({ path: "userId", match: { role: "plumber", accountStatus: "active", emailVerified: true }, select: "_id name email" })
       .lean(),
   ]);
+  
   const recipients = [
     ...admins.map((user) => ({ user, type: "LEAK_DETECTED" })),
     ...plumberProfiles.filter((profile) => profile.userId).map((profile) => ({ user: profile.userId, type: "LEAK_DETECTED" })),
   ];
+
+  console.log(`[EMAIL] 📧 Preparing notifications for ${leakEvent.incidentId}: ${admins.length} admin(s), ${plumberProfiles.filter(p => p.userId).length} plumber(s)`);
+
+  if (recipients.length === 0) {
+    console.warn(`[EMAIL] ⚠️  No recipients found for incident ${leakEvent.incidentId}. Check admin/plumber account status.`);
+    return;
+  }
 
   for (const { user, type } of recipients) {
     const dedupeKey = `${leakEvent._id}:${user._id}:${type}:${leakEvent.severity}`;
