@@ -197,6 +197,7 @@ function renderRequests(items) {
         <div>
           <div class="rc-title">
             ${esc(item.incidentId)}
+            ${ss.overallSystemStatus==='CRITICAL'?'<span style="color:var(--danger);font-size:12px;font-weight:800;margin-left:8px">🚨 CRITICAL ALERT</span>':''}
             &nbsp;<span style="color:${sevColor(sev)};font-size:13px;font-weight:700">${esc(sev)} SEVERITY</span>
           </div>
           <div class="rc-meta">

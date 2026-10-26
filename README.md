@@ -31,6 +31,7 @@ The Node.js backend starts the Python worker automatically. For local use, run t
 - Historical predictions, analytics, and alerts
 - Admin dashboard for incident management, plumber approvals, proposals, assignments, and recovery verification
 - Plumber registration, profile management, repair proposals, assignments, and completion reports
+- Each new critical leak alert creates a separate repair request for approved plumbers; the admin reviews proposals and assigns a plumber
 - Role-protected pages and API routes
 
 ## Requirements

@@ -263,8 +263,9 @@ async function loadLeaks() {
   $('leaks').innerHTML = leaks.map(leak => {
     const isOpen = leak.status==='OPEN_FOR_PROPOSALS';
     const sev = (leak.severity||'').toUpperCase();
-    const cardClass = isOpen&&sev==='HIGH'?'is-open':isOpen?'is-warning':'';
     const ss = leak.sensorSnapshot || {};
+    const isCritical = ss.overallSystemStatus==='CRITICAL';
+    const cardClass = isOpen&&isCritical?'is-open':isOpen?'is-warning':'';
     const det = ss.detectedAt ? new Date(ss.detectedAt).toLocaleString() : 'Unknown';
 
     return `
@@ -273,6 +274,7 @@ async function loadLeaks() {
         <div>
           <div class="ic-title">
             ${esc(leak.incidentId)}
+            ${isCritical?'<span style="color:var(--danger);font-size:12px;font-weight:800;margin-left:8px">🚨 CRITICAL ALERT</span>':''}
             &nbsp;<span style="color:${sevColor(sev)};font-size:13px">${esc(sev)} severity</span>
           </div>
           <div class="ic-meta">
@@ -338,22 +340,19 @@ async function showProposals(incidentId) {
     return;
   }
 
-  // Sort cheapest first, mark best
+  // Sort by cost to make budget comparison straightforward; the admin selects manually.
   const sorted = [...proposals].sort((a,b)=>(a.totalEstimatedCharges||0)-(b.totalEstimatedCharges||0));
-  const bestId = sorted[0]?._id;
 
   panel.innerHTML = `
     <div class="proposals-panel">
-      <div class="pp-title">📋 ${sorted.length} proposal${sorted.length>1?'s':''} received — sorted cheapest first</div>
+      <div class="pp-title">📋 ${sorted.length} proposal${sorted.length>1?'s':''} received — compare estimate, experience, and skills before assigning</div>
       ${sorted.map(p => {
-        const isBest = String(p._id)===String(bestId);
         const avail  = p.earliestAvailability ? new Date(p.earliestAvailability).toLocaleDateString() : '—';
         return `
-        <div class="proposal-row" style="${isBest?'background:#f0fdf4':''}" >
+        <div class="proposal-row">
           <div>
             <div class="pr-name">
               ${esc(p.plumberId?.name||'Unknown plumber')}
-              ${isBest?'<span class="badge b-green" style="margin-left:8px">⭐ Best value</span>':''}
             </div>
             <div class="pr-method">${esc(p.repairMethod)}</div>
             <div class="pr-costs">
@@ -365,13 +364,13 @@ async function showProposals(incidentId) {
               <span>Available: <strong>${esc(avail)}</strong></span>
             </div>
             ${p.warrantyDetails?`<div style="font-size:12px;color:var(--muted);margin-top:4px">Warranty: ${esc(p.warrantyDetails)}</div>`:''}
-            ${p.plumberProfile?`<div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(p.plumberProfile.city||'')}${p.plumberProfile.state?', '+p.plumberProfile.state:''} · ${esc(p.plumberProfile.experienceYears||0)} yrs exp</div>`:''}
+            ${p.plumberProfile?`<div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(p.plumberProfile.city||'')}${p.plumberProfile.state?', '+p.plumberProfile.state:''} · ${esc(p.plumberProfile.experienceYears||0)} yrs experience · Skills: ${esc((p.plumberProfile.skills||[]).join(', ')||'Not specified')}</div>`:''}
           </div>
           <div class="pr-assign-col">
             <div class="pr-total">₹${esc(p.totalEstimatedCharges)}</div>
             ${p.status==='submitted'
               ?`<button class="btn" data-action="assign-proposal" data-id="${esc(p._id)}" data-incident="${esc(incidentId)}"
-                  style="${isBest?'background:var(--success)':''}">
+                  >
                   Assign this plumber
                 </button>`
               :`<span class="badge b-grey">${esc(p.status)}</span>`}
@@ -461,7 +460,7 @@ async function refresh() {
   msg('page-message','Loading…',true);
   try {
     if(!await loadUser()) return;
-    await Promise.allSettled([
+    await Promise.all([
       loadDashboard(), loadRecipient(), loadLeaks(),
       loadAssignments(), loadPlumbers(), loadAudit(),
     ]);
