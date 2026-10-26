@@ -16,6 +16,7 @@ import { randomBytes } from 'node:crypto';
 
 let lastSeenId        = null;   // _id of the last prediction we processed
 let lastSystemStatus  = null;
+let lastCriticalLeak  = false;
 let tickInProgress    = false;
 
 /**
@@ -67,10 +68,13 @@ async function buildSnapshot() {
   return { latest, stats, alerts, history, analytics, serverTime: new Date().toISOString() };
 }
 
-export function isCriticalLeakAlert(prediction, previousStatus) {
+export function isCriticalLeakPrediction(prediction) {
   return prediction.overallSystemStatus === "CRITICAL" &&
-    previousStatus !== "CRITICAL" &&
     prediction.mlPredictionData === 1;
+}
+
+export function isCriticalLeakAlert(prediction, previousAlert) {
+  return isCriticalLeakPrediction(prediction) && !previousAlert;
 }
 
 async function createCriticalLeakEvent(prediction) {
@@ -141,9 +145,11 @@ async function tick() {
       foundNew = true;
       lastSeenId = prediction._id;
       const previousStatus = lastSystemStatus;
+      const previousCriticalLeak = lastCriticalLeak;
       lastSystemStatus = prediction.overallSystemStatus;
+      lastCriticalLeak = isCriticalLeakPrediction(prediction);
 
-      if (isCriticalLeakAlert(prediction, previousStatus)) {
+      if (isCriticalLeakAlert(prediction, previousCriticalLeak)) {
         try {
           await createCriticalLeakEvent(prediction);
         } catch (err) {
@@ -189,34 +195,42 @@ export async function getInitialSnapshot() {
 export async function startBroadcaster() {
   const latest = await MlPrediction.findOne()
     .sort({ _id: -1 })
-    .select('_id overallSystemStatus')
+    .select('_id overallSystemStatus mlPredictionData')
     .lean();
 
   if (latest) {
     lastSeenId       = latest._id.toString();
     lastSystemStatus = latest.overallSystemStatus;
+    lastCriticalLeak = isCriticalLeakPrediction(latest);
 
-    if (latest.overallSystemStatus === "CRITICAL") {
+    if (lastCriticalLeak) {
       try {
-        const previousNonCritical = await MlPrediction.findOne({
+        const previousNonAlert = await MlPrediction.findOne({
           _id: { $lt: latest._id },
-          overallSystemStatus: { $ne: "CRITICAL" },
+          $or: [
+            { overallSystemStatus: { $ne: "CRITICAL" } },
+            { mlPredictionData: { $ne: 1 } },
+          ],
         })
           .sort({ _id: -1 })
-          .select("_id overallSystemStatus")
+          .select("_id overallSystemStatus mlPredictionData")
           .lean();
-        const firstCritical = await MlPrediction.findOne({
+        const firstCriticalLeak = await MlPrediction.findOne({
           _id: {
-            ...(previousNonCritical ? { $gt: previousNonCritical._id } : {}),
+            ...(previousNonAlert ? { $gt: previousNonAlert._id } : {}),
             $lte: latest._id,
           },
           overallSystemStatus: "CRITICAL",
+          mlPredictionData: 1,
         })
           .sort({ _id: 1 })
           .lean();
 
-        if (firstCritical && isCriticalLeakAlert(firstCritical, previousNonCritical?.overallSystemStatus ?? null)) {
-          await createCriticalLeakEvent(firstCritical);
+        if (firstCriticalLeak && isCriticalLeakAlert(
+          firstCriticalLeak,
+          previousNonAlert ? isCriticalLeakPrediction(previousNonAlert) : false
+        )) {
+          await createCriticalLeakEvent(firstCriticalLeak);
         }
       } catch (err) {
         console.error(`[LEAK] Startup: failed to recover the current critical alert: ${err.message}`);
