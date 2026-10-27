@@ -31,6 +31,7 @@ const __dirname  = path.dirname(__filename);
 
 const app = express();
 
+app.set("trust proxy", 1);
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 
 // CORS: in production restrict to WEB_ORIGINS (comma-separated list).
