@@ -3,7 +3,7 @@
  * Complete Plumber workspace — Critical alert cards, proposal submission,
  * my proposals, assignments with step progress, completion reports.
  */
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { api, post, patch, formatDate, number } from "../api";
 import {
   useLoad, useLiveReload,
