@@ -455,6 +455,15 @@ export default function AdminPage() {
 
   useLiveReload(() => { reloadDash(); reloadLeaks(); });
 
+  // Fallback polling every 15 s so new incidents appear even if SSE misses a beat
+  useEffect(() => {
+    const timer = setInterval(() => {
+      reloadDash();
+      reloadLeaks();
+    }, 15_000);
+    return () => clearInterval(timer);
+  }, []);
+
   useEffect(() => {
     api("/notifications/settings").then(s => { setOwnerName(s.ownerName || ""); setOwnerEmail(s.ownerEmail || ""); }).catch(() => {});
   }, []);

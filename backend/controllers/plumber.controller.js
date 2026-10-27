@@ -36,9 +36,14 @@ export async function updateProfile(req, res) {
 
 export async function listRepairRequests(req, res) {
   try {
-    await ensureCurrentCriticalLeakIncident();
-    const page = Math.max(Number(req.query.page) || 1, 1);
-    const limit = Math.min(Number(req.query.limit) || 25, 100);
+    // Ensure the current critical block has an open incident before returning
+    // requests — this guarantees plumbers see real-time alerts immediately.
+    ensureCurrentCriticalLeakIncident().catch((err) => {
+      console.warn("[PLUMBER] ensureCurrentCriticalLeakIncident warning:", err.message);
+    });
+
+    const page  = Math.max(Number(req.query.page)  || 1, 1);
+    const limit = Math.min(Number(req.query.limit)  || 25, 100);
     const [items, total] = await Promise.all([
       LeakEvent.find({ status: "OPEN_FOR_PROPOSALS" })
         .sort({ createdAt: -1 })
@@ -48,6 +53,7 @@ export async function listRepairRequests(req, res) {
         .lean(),
       LeakEvent.countDocuments({ status: "OPEN_FOR_PROPOSALS" }),
     ]);
+    console.log(`[PLUMBER] listRepairRequests → ${total} open incidents`);
     res.json({ data: items, page, limit, total, pages: Math.ceil(total / limit) });
   } catch (err) {
     console.error("[PLUMBER] Repair request list failed:", err.message);

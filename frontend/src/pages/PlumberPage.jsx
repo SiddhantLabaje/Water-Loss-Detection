@@ -455,6 +455,12 @@ export default function PlumberPage() {
 
   useLiveReload(reload);
 
+  // Fallback polling every 15 s so new leak requests appear without SSE
+  useEffect(() => {
+    const timer = setInterval(() => reload(), 15_000);
+    return () => clearInterval(timer);
+  }, []);
+
   function toggleForm(id)       { setOpenForms(p => ({ ...p, [id]: !p[id] })); }
   function toggleCompletion(id) { setOpenCompletions(p => ({ ...p, [id]: !p[id] })); }
 

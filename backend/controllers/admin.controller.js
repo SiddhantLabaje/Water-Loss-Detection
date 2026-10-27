@@ -19,6 +19,9 @@ import {
 // GET /api/admin/dashboard
 export async function getDashboard(req, res) {
   try {
+    // Ensure the latest critical block has an incident before computing counts
+    ensureCurrentCriticalLeakIncident().catch(() => {});
+
     const [
       totalSensors,
       totalPredictions,
@@ -231,25 +234,31 @@ export async function updatePlumberStatus(req, res) {
 // GET /api/admin/leaks
 export async function listLeaks(req, res) {
   try {
-    // Best-effort: trigger catch-up in case broadcaster hasn't processed recent predictions
+    // Always make sure the current critical block has an open incident.
+    // This is fast (a few indexed queries) and ensures the admin sees
+    // real-time incidents even if the broadcaster hasn't ticked yet.
     ensureCurrentCriticalLeakIncident().catch((err) => {
       console.warn("[ADMIN] ensureCurrentCriticalLeakIncident warning:", err.message);
     });
 
-    const { status, severity, page = 1, limit = 20 } = req.query;
+    const { status, severity, page = 1, limit = 50 } = req.query;
     const filter = {};
     if (status)   filter.status   = status;
     if (severity) filter.severity = severity;
+
     const skip = (Math.max(1, +page) - 1) * Math.min(100, +limit);
     const [data, total] = await Promise.all([
       LeakEvent.find(filter).sort({ createdAt: -1 }).skip(skip).limit(+limit).lean(),
       LeakEvent.countDocuments(filter),
     ]);
-    console.log(`[ADMIN] listLeaks filter=${JSON.stringify(filter)} → ${total} total, ${data.length} returned`);
+
+    console.log(
+      `[ADMIN] listLeaks status="${status || "all"}" → ${total} total, ${data.length} returned`
+    );
     res.json({ total, page: +page, limit: +limit, data });
   } catch (err) {
     console.error("[ADMIN] listLeaks error:", err.message);
-    res.status(500).json({ message: "Failed to list leaks." });
+    res.status(500).json({ message: "Failed to list leak incidents." });
   }
 }
 
