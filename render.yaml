@@ -8,7 +8,8 @@ services:
     #   1. Install backend deps
     #   2. Install frontend deps and build React SPA  →  frontend/dist/
     #   3. Install Python ML deps
-    buildCommand: "cd backend && npm install && cd ../frontend && npm install && npm run build && cd .. && pip install -r ai-smart-water-ml/requirements.txt"
+    #   4. Run ML worker once to process any sensor readings backlog before server starts
+    buildCommand: "cd backend && npm install && cd ../frontend && npm install && npm run build && cd .. && pip install -r ai-smart-water-ml/requirements.txt && python3 ai-smart-water-ml/ml_worker.py"
     startCommand: "cd backend && node server.js"
     envVars:
       - key: NODE_ENV

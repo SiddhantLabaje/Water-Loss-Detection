@@ -231,7 +231,11 @@ export async function updatePlumberStatus(req, res) {
 // GET /api/admin/leaks
 export async function listLeaks(req, res) {
   try {
-    await ensureCurrentCriticalLeakIncident();
+    // Best-effort: trigger catch-up in case broadcaster hasn't processed recent predictions
+    ensureCurrentCriticalLeakIncident().catch((err) => {
+      console.warn("[ADMIN] ensureCurrentCriticalLeakIncident warning:", err.message);
+    });
+
     const { status, severity, page = 1, limit = 20 } = req.query;
     const filter = {};
     if (status)   filter.status   = status;
@@ -241,8 +245,10 @@ export async function listLeaks(req, res) {
       LeakEvent.find(filter).sort({ createdAt: -1 }).skip(skip).limit(+limit).lean(),
       LeakEvent.countDocuments(filter),
     ]);
+    console.log(`[ADMIN] listLeaks filter=${JSON.stringify(filter)} → ${total} total, ${data.length} returned`);
     res.json({ total, page: +page, limit: +limit, data });
   } catch (err) {
+    console.error("[ADMIN] listLeaks error:", err.message);
     res.status(500).json({ message: "Failed to list leaks." });
   }
 }

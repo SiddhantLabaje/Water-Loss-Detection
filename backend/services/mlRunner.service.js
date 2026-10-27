@@ -117,5 +117,6 @@ export function startMlRunner() {
   // Then on a fixed interval
   setInterval(runMlWorker, RUN_INTERVAL_MS);
 
-  console.log(`ML runner started — spawning Python worker every ${RUN_INTERVAL_MS / 1000}s.`);
+  console.log(`[ML] Runner started — spawning Python worker every ${RUN_INTERVAL_MS / 1000}s.`);
+  console.log(`[ML] Python: ${PYTHON_BIN}  Script: ${ML_WORKER_SCRIPT}`);
 }

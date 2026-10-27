@@ -146,17 +146,20 @@ export async function startBroadcaster() {
     .lean();
 
   if (latest) {
+    // On startup, reprocess ALL predictions from the beginning to catch
+    // any leak events that were never created (e.g. because the server was
+    // restarted after the ML worker had already written predictions).
+    console.log('[BROADCAST] Catching up on existing predictions at startup…');
+    try {
+      await reprocessAllPredictions();
+    } catch (err) {
+      console.error('[BROADCAST] Startup catch-up failed:', err.message);
+    }
+
+    // After catch-up, set lastSeenId so the ticker only processes NEW predictions
     lastSeenId       = latest._id.toString();
     lastSystemStatus = latest.overallSystemStatus;
     lastCriticalLeak = isCriticalLeakPrediction(latest);
-
-    if (lastCriticalLeak) {
-      try {
-        await ensureCurrentCriticalLeakIncident();
-      } catch (err) {
-        console.error(`[LEAK] Startup: failed to recover the current critical alert: ${err.message}`);
-      }
-    }
   }
 
   setInterval(tick, 5000);
@@ -165,5 +168,43 @@ export async function startBroadcaster() {
       console.error("[EMAIL] Failed notification retry cycle:", err.message);
     });
   }, 60_000);
-  console.log('SSE broadcaster started — polling every 5 seconds.');
+  console.log('[BROADCAST] Ticker started, polling ML predictions every 5 seconds.');
+}
+
+/**
+ * Walk ALL existing predictions in chronological order and create any
+ * missing LeakEvent documents. Safe to call multiple times — duplicate
+ * detection is handled inside createCriticalLeakEvent.
+ */
+async function reprocessAllPredictions() {
+  const predictions = await MlPrediction.find({})
+    .sort({ _id: 1 })
+    .lean();
+
+  if (predictions.length === 0) {
+    console.log('[BROADCAST] No ML predictions found — waiting for Python worker to run.');
+    return;
+  }
+
+  let previousCriticalLeak = false;
+  let created = 0;
+
+  for (const prediction of predictions) {
+    const isCritical = isCriticalLeakPrediction(prediction);
+    if (isCriticalLeakAlert(prediction, previousCriticalLeak)) {
+      try {
+        await createCriticalLeakEvent(prediction);
+        created++;
+      } catch (err) {
+        console.error(`[BROADCAST] Catch-up failed for prediction ${prediction._id}: ${err.message}`);
+      }
+    }
+    previousCriticalLeak = isCritical;
+  }
+
+  if (created > 0) {
+    console.log(`[BROADCAST] Catch-up complete: created/verified ${created} leak incident(s).`);
+  } else {
+    console.log(`[BROADCAST] Catch-up complete: no new incidents needed.`);
+  }
 }

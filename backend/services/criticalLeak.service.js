@@ -66,7 +66,7 @@ export async function createCriticalLeakEvent(prediction) {
     throw err;
   }
 
-  console.log(`[LEAK] Created repair incident ${leak.incidentId} from critical alert ${prediction._id}.`);
+  console.log(`[LEAK] Created repair incident ${leak.incidentId} from critical alert ${prediction._id}. severity=${severity} waterLoss=${prediction.waterLossRate ?? "?"} L/hr`);
   notifyLeakEvent(leak).catch((err) => {
     console.error(`[EMAIL] Leak notification preparation failed for ${leak.incidentId}: ${err.message}`);
   });
