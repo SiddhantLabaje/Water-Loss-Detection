@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 // Pages
 import LoginPage from "./pages/LoginPage";
@@ -150,50 +150,31 @@ function App() {
 function ProtectedLayout() {
   const { loading, user, profile } = useSession();
   const location = useLocation();
-  const navigate = useNavigate();
 
   if (loading) return <Loading />;
   if (!user) return <Navigate to="/login" replace />;
 
-  const adminOnly = ["/admin"].includes(location.pathname);
-  const plumberOnly = ["/plumber"].includes(location.pathname);
+  const isAdmin   = user.role === "admin";
+  const isPlumber = user.role === "plumber";
 
-  if (adminOnly && user.role !== "admin") {
-    return <Navigate to="/plumber" replace />;
-  }
-  if (plumberOnly && user.role !== "plumber") {
-    return <Navigate to="/admin" replace />;
-  }
-  if (
-    !adminOnly &&
-    !plumberOnly &&
-    !["admin", "plumber"].includes(user.role)
-  ) {
-    return <Navigate to="/login" replace />;
-  }
+  // Role-based route guards
+  if (location.pathname === "/admin"  && !isAdmin)   return <Navigate to="/plumber"  replace />;
+  if (location.pathname === "/plumber" && !isPlumber) return <Navigate to="/admin"   replace />;
+  if (!isAdmin && !isPlumber)                         return <Navigate to="/login"   replace />;
 
-  // Check plumber approval
-  if (plumberOnly && profile?.approvalStatus !== "approved") {
-    return (
-      <AppShell>
-        <PlumberPending profile={profile} user={user} />
-      </AppShell>
-    );
-  }
+  // Plumber pending approval — still show the shell with a message
+  const plumberNeedsApproval =
+    isPlumber &&
+    location.pathname === "/plumber" &&
+    profile?.approvalStatus !== "approved";
 
   return (
     <AppShell>
-      <Routes>
-        <Route path="/admin" element={<AdminPage />} />
-        <Route path="/plumber" element={<PlumberPage />} />
-        <Route path="/monitoring" element={<MonitoringPage />} />
-        <Route path="/sensors" element={<SensorsPage />} />
-        <Route path="/sensor-data" element={<SensorsPage raw />} />
-        <Route path="/predictions" element={<PredictionsPage />} />
-        <Route path="/analytics" element={<AnalyticsPage />} />
-        <Route path="/alerts" element={<AlertsPage />} />
-        <Route path="/dashboard-data" element={<DashboardDataPage />} />
-      </Routes>
+      {plumberNeedsApproval ? (
+        <PlumberPending profile={profile} user={user} />
+      ) : (
+        <Outlet />
+      )}
     </AppShell>
   );
 }
