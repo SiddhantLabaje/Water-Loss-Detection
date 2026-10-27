@@ -455,12 +455,12 @@ export default function AdminPage() {
 
   useLiveReload(() => { reloadDash(); reloadLeaks(); });
 
-  // Fallback polling every 15 s so new incidents appear even if SSE misses a beat
+  // Fallback polling every 60 s in case SSE misses a beat
   useEffect(() => {
     const timer = setInterval(() => {
       reloadDash();
       reloadLeaks();
-    }, 15_000);
+    }, 60_000);
     return () => clearInterval(timer);
   }, []);
 

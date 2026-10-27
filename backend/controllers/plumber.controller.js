@@ -8,7 +8,6 @@ import MlPrediction from "../models/mlPrediction.model.js";
 import User from "../models/user.model.js";
 import { audit } from "../services/audit.service.js";
 import { sendRepairComplete } from "../services/notification.service.js";
-import { ensureCurrentCriticalLeakIncident } from "../services/criticalLeak.service.js";
 
 const safeFields = "name email accountStatus emailVerified";
 
@@ -36,12 +35,6 @@ export async function updateProfile(req, res) {
 
 export async function listRepairRequests(req, res) {
   try {
-    // Ensure the current critical block has an open incident before returning
-    // requests — this guarantees plumbers see real-time alerts immediately.
-    ensureCurrentCriticalLeakIncident().catch((err) => {
-      console.warn("[PLUMBER] ensureCurrentCriticalLeakIncident warning:", err.message);
-    });
-
     const page  = Math.max(Number(req.query.page)  || 1, 1);
     const limit = Math.min(Number(req.query.limit)  || 25, 100);
     const [items, total] = await Promise.all([
@@ -53,7 +46,6 @@ export async function listRepairRequests(req, res) {
         .lean(),
       LeakEvent.countDocuments({ status: "OPEN_FOR_PROPOSALS" }),
     ]);
-    console.log(`[PLUMBER] listRepairRequests → ${total} open incidents`);
     res.json({ data: items, page, limit, total, pages: Math.ceil(total / limit) });
   } catch (err) {
     console.error("[PLUMBER] Repair request list failed:", err.message);

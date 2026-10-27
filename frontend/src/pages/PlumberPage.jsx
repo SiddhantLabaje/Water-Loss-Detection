@@ -455,9 +455,9 @@ export default function PlumberPage() {
 
   useLiveReload(reload);
 
-  // Fallback polling every 15 s so new leak requests appear without SSE
+  // Fallback polling every 60 s in case SSE misses a beat
   useEffect(() => {
-    const timer = setInterval(() => reload(), 15_000);
+    const timer = setInterval(() => reload(), 60_000);
     return () => clearInterval(timer);
   }, []);
 

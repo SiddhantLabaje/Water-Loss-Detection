@@ -7,7 +7,6 @@ import RepairAssignment from "../models/repairAssignment.model.js";
 import AuditLog from "../models/auditLog.model.js";
 import MlPrediction from "../models/mlPrediction.model.js";
 import { audit } from "../services/audit.service.js";
-import { ensureCurrentCriticalLeakIncident } from "../services/criticalLeak.service.js";
 import {
   sendPlumberInvite,
   sendPlumberApproved,
@@ -19,9 +18,6 @@ import {
 // GET /api/admin/dashboard
 export async function getDashboard(req, res) {
   try {
-    // Ensure the latest critical block has an incident before computing counts
-    ensureCurrentCriticalLeakIncident().catch(() => {});
-
     const [
       totalSensors,
       totalPredictions,
@@ -234,13 +230,6 @@ export async function updatePlumberStatus(req, res) {
 // GET /api/admin/leaks
 export async function listLeaks(req, res) {
   try {
-    // Always make sure the current critical block has an open incident.
-    // This is fast (a few indexed queries) and ensures the admin sees
-    // real-time incidents even if the broadcaster hasn't ticked yet.
-    ensureCurrentCriticalLeakIncident().catch((err) => {
-      console.warn("[ADMIN] ensureCurrentCriticalLeakIncident warning:", err.message);
-    });
-
     const { status, severity, page = 1, limit = 50 } = req.query;
     const filter = {};
     if (status)   filter.status   = status;
@@ -251,10 +240,6 @@ export async function listLeaks(req, res) {
       LeakEvent.find(filter).sort({ createdAt: -1 }).skip(skip).limit(+limit).lean(),
       LeakEvent.countDocuments(filter),
     ]);
-
-    console.log(
-      `[ADMIN] listLeaks status="${status || "all"}" → ${total} total, ${data.length} returned`
-    );
     res.json({ total, page: +page, limit: +limit, data });
   } catch (err) {
     console.error("[ADMIN] listLeaks error:", err.message);
