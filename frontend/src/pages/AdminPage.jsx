@@ -1,29 +1,39 @@
-import React, { useEffect, useRef, useState } from "react";
+/**
+ * AdminPage.jsx
+ * Complete Admin dashboard — Critical leak alerts, proposals, plumber assignment,
+ * active assignments, plumber management, owner settings, audit log.
+ */
+import React, { useEffect, useState } from "react";
 import { api, post, patch, formatDate, number } from "../api";
-import { useLoad, useLiveReload, PageHeading, Card, Badge, Loading, Message, Icon } from "../App";
+import {
+  useLoad, useLiveReload,
+  PageHeading, Card, Badge, Loading, Message, Icon,
+} from "../App";
 
-// ── helpers ──────────────────────────────────────────────────────────────
-const sevColor = (s) =>
-  s === "HIGH" ? "var(--danger)" : s === "MEDIUM" ? "var(--warning)" : "var(--success)";
-
+// ── Colour helpers ────────────────────────────────────────────────────────
+const SEV_COLOR = { HIGH: "var(--danger)", MEDIUM: "var(--warning)", LOW: "var(--success)" };
 const STATUS_TONE = {
-  OPEN_FOR_PROPOSALS: "amber",
-  ASSIGNED: "blue",
-  REPAIR_IN_PROGRESS: "blue",
-  VERIFYING_RECOVERY: "amber",
-  RECOVERY_FAILED: "red",
-  RECOVERED: "green",
-  DETECTED: "gray",
-  CANCELLED: "gray",
+  OPEN_FOR_PROPOSALS:       "amber",
+  DETECTED:                 "gray",
+  ASSIGNED:                 "blue",
+  REPAIR_IN_PROGRESS:       "blue",
+  REPAIR_REPORTED_COMPLETE: "amber",
+  VERIFYING_RECOVERY:       "amber",
+  RECOVERED:                "green",
+  RECOVERY_FAILED:          "red",
+  AWAITING_INSPECTION:      "amber",
+  CANCELLED:                "gray",
 };
 
-function statusBadge(s) {
-  return (
-    <Badge tone={STATUS_TONE[s] || "gray"}>{s.replace(/_/g, " ")}</Badge>
-  );
+function SeverityBadge({ sev }) {
+  const tone = sev === "HIGH" ? "red" : sev === "MEDIUM" ? "amber" : "green";
+  return <Badge tone={tone}>{sev}</Badge>;
+}
+function StatusBadge({ status }) {
+  return <Badge tone={STATUS_TONE[status] || "gray"}>{status.replace(/_/g, " ")}</Badge>;
 }
 
-// ── KPI cards ─────────────────────────────────────────────────────────────
+// ── KPI card ──────────────────────────────────────────────────────────────
 function KpiCard({ label, value, sub, color = "blue" }) {
   return (
     <div className={`kpi-card kpi-${color}`}>
@@ -34,93 +44,141 @@ function KpiCard({ label, value, sub, color = "blue" }) {
   );
 }
 
+// ── Sensor snapshot row ───────────────────────────────────────────────────
+function SensorRow({ ss, sev }) {
+  const readings = [
+    { v: ss.flowSensorData,      u: "L/min",  label: "Flow" },
+    { v: ss.pressureSensorData,  u: "PSI",    label: "Pressure" },
+    { v: ss.tankLevelSensorData, u: "%",      label: "Tank" },
+    { v: ss.waterLossRate,       u: "L/hr",   label: "Loss", highlight: sev === "HIGH" },
+  ];
+  return (
+    <div className="ic-sensors">
+      {readings.map(({ v, u, label, highlight }) => (
+        <div
+          key={label}
+          className="sensor-box"
+          style={highlight ? { borderColor: "var(--danger-bd)", background: "var(--danger-bg)" } : undefined}
+        >
+          <div className="sb-val" style={highlight ? { color: "var(--danger)" } : undefined}>
+            {v != null ? (typeof v === "number" ? v.toFixed(1) : v) : "—"}
+          </div>
+          <div className="sb-unit">{label} ({u})</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Proposals panel ───────────────────────────────────────────────────────
 function ProposalsPanel({ incidentId, onAssigned }) {
-  const { data, loading, error } = useLoad(
+  const { data, loading, error, reload } = useLoad(
     () => api(`/admin/leaks/${incidentId}/proposals`),
     [incidentId]
   );
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState("");
+  const [msg, setMsg] = useState({ text: "", ok: false });
 
   async function assign(proposalId) {
-    if (!window.confirm("Assign this plumber? All other proposals will be marked as not selected.")) return;
+    if (!window.confirm("Assign this plumber? Other proposals will be marked as not selected.")) return;
     setBusy(true);
     try {
       await post(`/admin/leaks/${incidentId}/assign`, { proposalId });
-      setMsg("Plumber assigned. They will receive an email notification.");
+      setMsg({ text: "Plumber assigned successfully. They will receive an email notification.", ok: true });
       onAssigned?.();
     } catch (e) {
-      setMsg(e.message);
+      setMsg({ text: e.message, ok: false });
     } finally {
       setBusy(false);
     }
   }
 
-  if (loading) return <div className="pp-wrap"><Loading text="Loading proposals…" /></div>;
-  if (error) return <div className="pp-wrap"><Message>{error}</Message></div>;
+  if (loading) return <div style={{ padding: 16 }}><Loading text="Loading proposals…" /></div>;
+  if (error)   return <div style={{ padding: 16 }}><Message>{error}</Message></div>;
 
-  const sorted = [...(data || [])].sort(
-    (a, b) => (a.totalEstimatedCharges || 0) - (b.totalEstimatedCharges || 0)
+  const sorted = [...(data || [])].sort((a, b) =>
+    (a.totalEstimatedCharges || 0) - (b.totalEstimatedCharges || 0)
   );
 
   return (
     <div className="proposals-panel">
-      <div className="pp-title">
-        <Icon name="clipboard" /> {sorted.length} proposal{sorted.length !== 1 ? "s" : ""} received — compare and assign
+      <div className="pp-header">
+        <Icon name="clipboard" />
+        {sorted.length === 0
+          ? "No proposals yet — plumbers will be notified by email to submit estimates."
+          : `${sorted.length} proposal${sorted.length !== 1 ? "s" : ""} received — compare and assign`}
       </div>
-      {msg && (
-        <div style={{ padding: "10px 18px" }}>
-          <Message kind={msg.includes("Plumber assigned") ? "success" : "error"}>{msg}</Message>
+
+      {msg.text && (
+        <div style={{ padding: "8px 18px" }}>
+          <Message kind={msg.ok ? "success" : "error"}>{msg.text}</Message>
         </div>
       )}
+
       {sorted.length === 0 ? (
-        <div className="pp-empty">No proposals yet — plumbers will see this incident and submit estimates.</div>
+        <div className="pp-empty">
+          Approved plumbers received email notifications. Check back here once they submit estimates.
+        </div>
       ) : (
         sorted.map((p, i) => {
           const avail = p.earliestAvailability
-            ? new Date(p.earliestAvailability).toLocaleDateString()
+            ? new Date(p.earliestAvailability).toLocaleString()
             : "—";
           return (
-            <div className="proposal-row" key={p._id}>
-              <div className="pr-left">
-                <div className="pr-name">{p.plumberId?.name || "Unknown plumber"}</div>
-                <div className="pr-method">{p.repairMethod}</div>
-                <div className="pr-costs">
-                  <span>Labour: <strong>₹{p.labourCharges}</strong></span>
-                  <span>Materials: <strong>₹{p.materialCharges}</strong></span>
-                  {p.visitCharges > 0 && <span>Visit: <strong>₹{p.visitCharges}</strong></span>}
-                  {p.otherCharges > 0 && <span>Other: <strong>₹{p.otherCharges}</strong></span>}
-                  <span>Duration: <strong>{p.estimatedDurationHours} hrs</strong></span>
-                  <span>Available: <strong>{avail}</strong></span>
+            <div className={`proposal-row${i === 0 && sorted.length > 1 ? " proposal-best" : ""}`} key={p._id}>
+              {i === 0 && sorted.length > 1 && (
+                <div className="pr-best-tag">⭐ Lowest cost</div>
+              )}
+              <div className="pr-body">
+                <div className="pr-top">
+                  <div>
+                    <div className="pr-name">{p.plumberId?.name || "Unknown plumber"}</div>
+                    <div className="pr-email">{p.plumberId?.email || ""}</div>
+                  </div>
+                  <div className="pr-total-col">
+                    <div className="pr-total">₹{(p.totalEstimatedCharges || 0).toLocaleString()}</div>
+                    <div className="pr-duration">{p.estimatedDurationHours} hrs</div>
+                  </div>
                 </div>
-                {p.warrantyDetails && (
-                  <div className="pr-warranty">Warranty: {p.warrantyDetails}</div>
-                )}
+
+                <div className="pr-method">{p.repairMethod}</div>
+
+                <div className="pr-costs">
+                  <span>Labour <strong>₹{p.labourCharges}</strong></span>
+                  <span>Materials <strong>₹{p.materialCharges}</strong></span>
+                  {p.visitCharges > 0 && <span>Visit <strong>₹{p.visitCharges}</strong></span>}
+                  {p.otherCharges > 0 && <span>Other <strong>₹{p.otherCharges}</strong></span>}
+                  <span>Available <strong>{avail}</strong></span>
+                </div>
+
                 {p.plumberProfile && (
                   <div className="pr-profile">
-                    {p.plumberProfile.city}{p.plumberProfile.state ? `, ${p.plumberProfile.state}` : ""} ·{" "}
-                    {p.plumberProfile.experienceYears || 0} yrs · Skills:{" "}
-                    {(p.plumberProfile.skills || []).join(", ") || "Not specified"}
+                    📍 {[p.plumberProfile.city, p.plumberProfile.state].filter(Boolean).join(", ")}
+                    {p.plumberProfile.experienceYears > 0 && ` · ${p.plumberProfile.experienceYears} yrs exp`}
+                    {p.plumberProfile.skills?.length > 0 && ` · ${p.plumberProfile.skills.join(", ")}`}
                   </div>
                 )}
-              </div>
-              <div className="pr-assign-col">
-                <div className="pr-total">₹{p.totalEstimatedCharges}</div>
-                {i === 0 && sorted.length > 1 && (
-                  <div className="pr-best">Lowest cost</div>
+
+                {p.warrantyDetails && (
+                  <div className="pr-warranty">🛡 {p.warrantyDetails}</div>
                 )}
+
+                {p.notes && (
+                  <div className="pr-notes">📝 {p.notes}</div>
+                )}
+              </div>
+
+              <div className="pr-actions">
                 {p.status === "submitted" ? (
                   <button
-                    className="btn"
+                    className="btn btn-assign"
                     disabled={busy}
                     onClick={() => assign(p._id)}
-                    style={{ fontSize: "12px", padding: "6px 12px" }}
                   >
-                    Assign this plumber
+                    <Icon name="check" /> Assign this plumber
                   </button>
                 ) : (
-                  statusBadge(p.status)
+                  <StatusBadge status={p.status} />
                 )}
               </div>
             </div>
@@ -136,40 +194,30 @@ function IncidentCard({ leak, onAction }) {
   const [showProposals, setShowProposals] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const isOpen = leak.status === "OPEN_FOR_PROPOSALS";
-  const sev = (leak.severity || "").toUpperCase();
-  const ss = leak.sensorSnapshot || {};
-  const isCritical = ss.overallSystemStatus === "CRITICAL";
-  const det = ss.detectedAt ? new Date(ss.detectedAt).toLocaleString() : "Unknown";
+  const isOpen    = leak.status === "OPEN_FOR_PROPOSALS";
+  const sev       = (leak.severity || "").toUpperCase();
+  const ss        = leak.sensorSnapshot || {};
+  const isCrit    = ss.overallSystemStatus === "CRITICAL";
+  const det       = ss.detectedAt ? new Date(ss.detectedAt).toLocaleString() : "—";
 
   async function doAction(action) {
     setBusy(true);
     try {
       if (action === "open") {
-        await patch(`/admin/leaks/${leak._id}/status`, {
-          status: "OPEN_FOR_PROPOSALS",
-          reason: "Administrator opened for proposals.",
-        });
+        await patch(`/admin/leaks/${leak._id}/status`, { status: "OPEN_FOR_PROPOSALS", reason: "Opened by administrator." });
+        onAction?.({ reload: true });
       } else if (action === "cancel") {
-        if (!window.confirm("Cancel this incident?")) return;
-        await patch(`/admin/leaks/${leak._id}/status`, {
-          status: "CANCELLED",
-          reason: "Cancelled by administrator.",
-        });
+        if (!window.confirm("Cancel this incident? This cannot be undone.")) return;
+        await patch(`/admin/leaks/${leak._id}/status`, { status: "CANCELLED", reason: "Cancelled by administrator." });
+        onAction?.({ reload: true });
       } else if (action === "verify") {
         const result = await post(`/repairs/${leak._id}/verify-recovery`, {});
-        onAction?.({ message: result.message, ok: result.recovered });
-        return;
+        onAction?.({ message: result.message || (result.recovered ? "Recovery confirmed!" : "Recovery not yet confirmed."), ok: !!result.recovered, reload: true });
       } else if (action === "retry-verify") {
-        await patch(`/admin/leaks/${leak._id}/status`, {
-          status: "VERIFYING_RECOVERY",
-          reason: "Admin requested retry.",
-        });
+        await patch(`/admin/leaks/${leak._id}/status`, { status: "VERIFYING_RECOVERY", reason: "Admin requested retry." });
         const result = await post(`/repairs/${leak._id}/verify-recovery`, {});
-        onAction?.({ message: result.message, ok: result.recovered });
-        return;
+        onAction?.({ message: result.message || (result.recovered ? "Recovery confirmed!" : "Recovery not yet confirmed."), ok: !!result.recovered, reload: true });
       }
-      onAction?.({ reload: true });
     } catch (e) {
       onAction?.({ message: e.message, ok: false });
     } finally {
@@ -177,86 +225,60 @@ function IncidentCard({ leak, onAction }) {
     }
   }
 
-  const cardStyle = {
-    borderLeft: isOpen && isCritical
-      ? "4px solid var(--danger)"
-      : isOpen
-      ? "4px solid var(--warning)"
-      : undefined,
-  };
+  const leftBorder = isOpen && isCrit ? "4px solid var(--danger)"
+    : isOpen ? "4px solid var(--warning)"
+    : leak.status === "RECOVERED" ? "4px solid var(--success)"
+    : undefined;
 
   return (
-    <div className="incident-card" style={cardStyle}>
+    <div className="incident-card" style={{ borderLeft: leftBorder }}>
+      {/* Header */}
       <div className="ic-head">
-        <div>
+        <div className="ic-head-left">
           <div className="ic-title">
-            {leak.incidentId}
-            {isCritical && (
-              <span style={{ color: "var(--danger)", fontSize: 12, fontWeight: 800, marginLeft: 8 }}>
-                <><Icon name="alerts" /> CRITICAL ALERT</>
-              </span>
+            <span className="ic-id">{leak.incidentId}</span>
+            {isCrit && isOpen && (
+              <span className="ic-crit-tag">🚨 CRITICAL</span>
             )}
-            &nbsp;
-            <span style={{ color: sevColor(sev), fontSize: 13 }}>{sev} severity</span>
           </div>
           <div className="ic-meta">
-            <span><Icon name="clock" /> Detected: {det}</span>
-            <span>{statusBadge(leak.status)}</span>
+            <span><Icon name="clock" /> {det}</span>
+            <SeverityBadge sev={sev} />
+            <StatusBadge status={leak.status} />
+            <span style={{ fontSize: 11, color: "var(--muted)" }}>
+              Prob: {ss.mlProbability != null ? `${Number(ss.mlProbability).toFixed(1)}%` : "—"}
+            </span>
           </div>
         </div>
-        <div style={{ textAlign: "right" }}>
-          {isOpen && (
-            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--danger)", textTransform: "uppercase", marginBottom: 4 }}>
-              <><Icon name="warning" /> Needs plumber assignment</>
-            </div>
-          )}
-          {statusBadge(leak.status)}
-        </div>
-      </div>
-
-      <div className="ic-sensors">
-        {[
-          [ss.flowSensorData, "Flow (L/min)"],
-          [ss.pressureSensorData, "Pressure (PSI)"],
-          [ss.tankLevelSensorData, "Tank level (%)"],
-          [ss.waterLossRate != null ? Number(ss.waterLossRate).toFixed(2) : null, "Water loss (L/hr)"],
-        ].map(([val, unit], i) => (
-          <div
-            className="sensor-box"
-            key={unit}
-            style={
-              i === 3 && sev === "HIGH"
-                ? { borderColor: "var(--danger-bd)", background: "var(--danger-bg)" }
-                : undefined
-            }
-          >
-            <div
-              className="sb-val"
-              style={i === 3 && sev === "HIGH" ? { color: "var(--danger)" } : undefined}
-            >
-              {val ?? "—"}
-            </div>
-            <div className="sb-unit">{unit}</div>
+        {isOpen && (
+          <div className="ic-needs-action">
+            <Icon name="warning" /> Needs plumber assignment
           </div>
-        ))}
+        )}
       </div>
 
+      {/* Sensor readings */}
+      <SensorRow ss={ss} sev={sev} />
+
+      {/* Actions */}
       <div className="ic-actions">
         {leak.status === "DETECTED" && (
-          <button className="btn" disabled={busy} onClick={() => doAction("open")}
-            style={{ background: "var(--warning)" }}>
+          <button className="btn btn-warning" disabled={busy} onClick={() => doAction("open")}>
             Open for proposals
           </button>
         )}
         {isOpen && (
-          <button className="btn" onClick={() => setShowProposals((v) => !v)}>
-            <><Icon name="repair" /> {showProposals ? "Hide proposals" : "View proposals & assign plumber"}</>
+          <button
+            className={`btn ${showProposals ? "btn-outline-primary" : ""}`}
+            onClick={() => setShowProposals(v => !v)}
+          >
+            <Icon name="clipboard" />
+            {showProposals ? "Hide proposals" : "View proposals & assign"}
           </button>
         )}
         {leak.status === "VERIFYING_RECOVERY" && (
-          <button className="btn" disabled={busy} onClick={() => doAction("verify")}
-            style={{ background: "var(--success)" }}>
-            <><Icon name="check" /> Verify recovery</>
+          <button className="btn btn-success" disabled={busy} onClick={() => doAction("verify")}>
+            <Icon name="check" /> Verify recovery
           </button>
         )}
         {leak.status === "RECOVERY_FAILED" && (
@@ -265,17 +287,13 @@ function IncidentCard({ leak, onAction }) {
           </button>
         )}
         {isOpen && (
-          <button
-            className="btn btn-ghost"
-            disabled={busy}
-            onClick={() => doAction("cancel")}
-            style={{ color: "var(--danger)", borderColor: "var(--danger-bd)" }}
-          >
+          <button className="btn btn-ghost btn-danger" disabled={busy} onClick={() => doAction("cancel")}>
             Cancel incident
           </button>
         )}
       </div>
 
+      {/* Proposals panel */}
       {showProposals && (
         <ProposalsPanel
           incidentId={leak._id}
@@ -289,212 +307,248 @@ function IncidentCard({ leak, onAction }) {
   );
 }
 
+// ── Assignment card ───────────────────────────────────────────────────────
+function AssignmentCard({ item, onReassign }) {
+  const [busy, setBusy] = useState(false);
+  const inc  = item.incidentId  || {};
+  const prop = item.selectedProposalId || {};
+  const plumber = item.plumberId || {};
+
+  const STATUS_MAP = { assigned: "amber", accepted: "blue", in_progress: "blue", completed: "green", reassigned: "gray", cancelled: "gray" };
+  const STEPS = ["assigned", "accepted", "in_progress", "completed"];
+  const LABELS = ["Assigned", "Accepted", "In progress", "Completed"];
+  const current = STEPS.indexOf(item.status);
+
+  async function reassign() {
+    const reason = window.prompt("Reason for reassignment (required):");
+    if (!reason?.trim()) return;
+    setBusy(true);
+    try {
+      await post(`/admin/assignments/${item._id}/reassign`, { reason: reason.trim() });
+      onReassign?.();
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="assign-card">
+      {/* Step pills */}
+      <div className="ac-steps">
+        {STEPS.map((s, i) => (
+          <div key={s} className={`ac-step${i < current ? " done" : i === current ? " active" : ""}`}>
+            {LABELS[i]}
+          </div>
+        ))}
+      </div>
+
+      <div className="ac-body">
+        <div className="ac-head">
+          <div>
+            <div className="ac-title">
+              {inc.incidentId || "Incident"} &nbsp;
+              <SeverityBadge sev={(inc.severity || "").toUpperCase()} />
+            </div>
+            <div className="ac-meta">
+              Assigned {item.assignedAt ? new Date(item.assignedAt).toLocaleDateString() : "—"}
+            </div>
+          </div>
+          <Badge tone={STATUS_MAP[item.status] || "gray"}>{item.status.replace(/_/g, " ")}</Badge>
+        </div>
+
+        {/* Plumber profile */}
+        <div className="ac-plumber">
+          <div className="ac-plumber-icon">👷</div>
+          <div>
+            <div className="ac-plumber-name">{plumber.name || "—"}</div>
+            <div className="ac-plumber-email">{plumber.email || "—"}</div>
+          </div>
+          <div className="ac-amount">
+            ₹{(prop.totalEstimatedCharges || 0).toLocaleString()}
+          </div>
+        </div>
+
+        {prop.repairMethod && (
+          <div className="ac-method">{prop.repairMethod}</div>
+        )}
+
+        {["assigned", "accepted"].includes(item.status) && (
+          <div className="ac-actions">
+            <button className="btn btn-ghost btn-sm" disabled={busy} onClick={reassign}>
+              Reassign plumber
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Plumber management card ───────────────────────────────────────────────
+function PlumberCard({ profile, onUpdate }) {
+  const [busy, setBusy] = useState(false);
+  const user = profile.userId || {};
+  const st   = profile.approvalStatus;
+
+  const TONE = { pending: "amber", approved: "green", rejected: "gray", suspended: "gray" };
+
+  async function action(type) {
+    setBusy(true);
+    try {
+      if (type === "approve" || type === "reject") {
+        await patch(`/admin/plumbers/${profile._id}/approval`, { status: type === "approve" ? "approved" : "rejected" });
+      } else {
+        await patch(`/admin/plumbers/${profile._id}/status`, { status: type === "suspend" ? "suspended" : "active" });
+      }
+      onUpdate?.();
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="plumber-card">
+      <div className="pc-avatar">👷</div>
+      <div className="pc-info">
+        <div className="pc-name">
+          {user.name || "—"}
+          <Badge tone={TONE[st] || "gray"} style={{ marginLeft: 8 }}>{st}</Badge>
+        </div>
+        <div className="pc-email">{user.email || "—"}</div>
+        <div className="pc-details">
+          {[profile.phone, profile.city && `${profile.city}, ${profile.state}`, profile.experienceYears != null && `${profile.experienceYears} yrs`].filter(Boolean).join(" · ")}
+        </div>
+        {profile.skills?.length > 0 && (
+          <div className="pc-skills">
+            {profile.skills.map(s => <span key={s} className="skill-tag">{s}</span>)}
+          </div>
+        )}
+      </div>
+      <div className="pc-actions">
+        {st === "pending"    && <><button className="btn btn-success btn-sm" disabled={busy} onClick={() => action("approve")}>Approve</button><button className="btn btn-ghost btn-danger btn-sm" disabled={busy} onClick={() => action("reject")}>Reject</button></>}
+        {st === "approved"   && <button className="btn btn-ghost btn-sm"    disabled={busy} onClick={() => action("suspend")}>Suspend</button>}
+        {st === "suspended"  && <button className="btn btn-ghost btn-sm"    disabled={busy} onClick={() => action("reactivate")}>Reactivate</button>}
+      </div>
+    </div>
+  );
+}
+
 // ── Main AdminPage ─────────────────────────────────────────────────────────
 export default function AdminPage() {
-  const [leakFilter, setLeakFilter] = useState("OPEN_FOR_PROPOSALS");
+  const [leakFilter,    setLeakFilter]    = useState("OPEN_FOR_PROPOSALS");
   const [plumberFilter, setPlumberFilter] = useState("pending");
   const [pageMsg, setPageMsg] = useState({ text: "", ok: false });
-
-  // Dashboard summary
-  const { data: dashboard, reload: reloadDash } = useLoad(() => api("/admin/dashboard"));
-
-  // Leaks
-  const {
-    data: leaksData,
-    loading: leaksLoading,
-    reload: reloadLeaks,
-  } = useLoad(
-    () =>
-      api(
-        `/admin/leaks?limit=100${leakFilter ? `&status=${encodeURIComponent(leakFilter)}` : ""}`
-      ),
-    [leakFilter]
-  );
-
-  // Assignments
-  const { data: assignmentsData, reload: reloadAssignments } = useLoad(() =>
-    api("/admin/assignments?limit=50")
-  );
-
-  // Plumbers
-  const { data: plumbersData, reload: reloadPlumbers } = useLoad(
-    () => api(`/admin/plumbers?status=${encodeURIComponent(plumberFilter)}`),
-    [plumberFilter]
-  );
-
-  // Audit log
-  const { data: auditData } = useLoad(() => api("/admin/audit-logs?limit=15"));
-
-  // Notification settings
-  const [ownerName, setOwnerName] = useState("");
+  const [ownerName,  setOwnerName]  = useState("");
   const [ownerEmail, setOwnerEmail] = useState("");
-  const [ownerMsg, setOwnerMsg] = useState({ text: "", ok: false });
+  const [ownerMsg,   setOwnerMsg]   = useState({ text: "", ok: false });
+
+  const { data: dash,     reload: reloadDash }        = useLoad(() => api("/admin/dashboard"));
+  const { data: leaksRes, loading: leaksLoading, reload: reloadLeaks }
+    = useLoad(() => api(`/admin/leaks?limit=100${leakFilter ? `&status=${encodeURIComponent(leakFilter)}` : ""}`), [leakFilter]);
+  const { data: assignRes, reload: reloadAssign }     = useLoad(() => api("/admin/assignments?limit=50"));
+  const { data: plumberRes, reload: reloadPlumbers }  = useLoad(() => api(`/admin/plumbers?status=${encodeURIComponent(plumberFilter)}`), [plumberFilter]);
+  const { data: auditRes }                            = useLoad(() => api("/admin/audit-logs?limit=15"));
+
+  useLiveReload(() => { reloadDash(); reloadLeaks(); });
 
   useEffect(() => {
-    api("/notifications/settings")
-      .then((s) => {
-        setOwnerName(s.ownerName || "");
-        setOwnerEmail(s.ownerEmail || "");
-      })
-      .catch(() => {});
+    api("/notifications/settings").then(s => { setOwnerName(s.ownerName || ""); setOwnerEmail(s.ownerEmail || ""); }).catch(() => {});
   }, []);
 
-  useLiveReload(() => {
-    reloadDash();
-    reloadLeaks();
-  });
+  function handleAction({ reload, message, ok } = {}) {
+    if (message) setPageMsg({ text: message, ok: !!ok });
+    if (reload) { reloadLeaks(); reloadAssign(); reloadDash(); }
+  }
 
-  const c = dashboard?.counts || {};
-  const p = dashboard?.latestPrediction;
-  const openCount = dashboard?.leaks?.openForProposals || 0;
-
-  async function handlePlumberAction(profileId, action) {
+  async function saveOwner(e) {
+    e.preventDefault();
     try {
-      if (action === "approve" || action === "reject") {
-        await patch(`/admin/plumbers/${profileId}/approval`, {
-          status: action === "approve" ? "approved" : "rejected",
-        });
-      } else {
-        await patch(`/admin/plumbers/${profileId}/status`, {
-          status: action === "suspend" ? "suspended" : "active",
-        });
-      }
-      setPageMsg({ text: "Updated successfully.", ok: true });
-      reloadPlumbers();
-      reloadDash();
-    } catch (e) {
-      setPageMsg({ text: e.message, ok: false });
-    }
+      const r = await api("/notifications/settings", { method: "PUT", body: JSON.stringify({ ownerName, ownerEmail }) });
+      setOwnerMsg({ text: r.message || "Saved.", ok: true });
+    } catch (e) { setOwnerMsg({ text: e.message, ok: false }); }
   }
 
   async function handleInvite(e) {
     e.preventDefault();
-    const form = e.currentTarget;
-    const btn = form.querySelector("button");
+    const btn = e.currentTarget.querySelector("button[type=submit]");
     btn.disabled = true;
     try {
-      const v = Object.fromEntries(new FormData(form));
-      const result = await post("/admin/plumbers", {
+      const v = Object.fromEntries(new FormData(e.currentTarget));
+      const r = await post("/admin/plumbers", {
         ...v,
         serviceRadiusKm: Number(v.serviceRadiusKm) || 25,
         experienceYears: Number(v.experienceYears) || 0,
-        skills: v.skillsText
-          ? v.skillsText.split(",").map((s) => s.trim()).filter(Boolean)
-          : [],
+        skills: v.skillsText ? v.skillsText.split(",").map(s => s.trim()).filter(Boolean) : [],
       });
-      setPageMsg({ text: result.message, ok: true });
-      form.reset();
+      setPageMsg({ text: r.message || "Invitation sent.", ok: true });
+      e.currentTarget.reset();
       reloadPlumbers();
-    } catch (e) {
-      setPageMsg({ text: e.message, ok: false });
-    } finally {
-      btn.disabled = false;
-    }
+    } catch (e) { setPageMsg({ text: e.message, ok: false }); }
+    finally { btn.disabled = false; }
   }
 
-  async function handleOwnerSave(e) {
-    e.preventDefault();
-    try {
-      const result = await api("/notifications/settings", {
-        method: "PUT",
-        body: JSON.stringify({ ownerName, ownerEmail }),
-      });
-      setOwnerMsg({ text: result.message, ok: true });
-    } catch (e) {
-      setOwnerMsg({ text: e.message, ok: false });
-    }
-  }
-
-  const ASSIGN_BADGE = {
-    assigned: "amber",
-    accepted: "blue",
-    in_progress: "blue",
-    completed: "green",
-    reassigned: "gray",
-  };
-
-  const STATUS_BADGE_PLUMBER = {
-    pending: "amber",
-    approved: "green",
-    rejected: "gray",
-    suspended: "gray",
-  };
+  const c         = dash?.counts || {};
+  const openCount = dash?.leaks?.openForProposals || 0;
+  const leaks     = leaksRes?.data || [];
+  const assigns   = assignRes?.data || [];
+  const plumbers  = plumberRes?.data || [];
+  const audits    = auditRes?.data || [];
 
   return (
     <>
       <PageHeading
         title="Administration"
-        description="Leak incidents · Plumber management · Assignments"
+        description="Critical alerts · Proposals · Plumber assignments · Management"
         action={
-          <button
-            className="btn btn-light"
-            onClick={() => {
-              reloadDash();
-              reloadLeaks();
-              reloadAssignments();
-              reloadPlumbers();
-            }}
-          >
-            ↻ Refresh
+          <button className="btn btn-light" onClick={() => { reloadDash(); reloadLeaks(); reloadAssign(); reloadPlumbers(); }}>
+            <Icon name="refresh" /> Refresh
           </button>
         }
       />
 
       {pageMsg.text && (
-        <Message kind={pageMsg.ok ? "success" : "error"}>{pageMsg.text}</Message>
+        <Message kind={pageMsg.ok ? "success" : "error"} onDismiss={() => setPageMsg({ text: "" })}>
+          {pageMsg.text}
+        </Message>
       )}
 
-      {/* KPI grid */}
-      <div className="g4">
-        {[
-          ["Sensors", "Total monitored", c.sensors, "blue"],
-          ["Leaks", "Total incidents", c.leakIncidents, "red"],
-          ["Pending plumbers", "Awaiting approval", c.pendingPlumbers, "amber"],
-          ["Open proposals", "Submitted by plumbers", c.submittedProposals, "violet"],
-          ["Active assignments", "In progress", c.activeAssignments, "teal"],
-          ["Awaiting verification", "Recovery checks needed", c.repairsAwaitingVerification, "amber"],
-          ["Recovered", "Successfully resolved", c.recoveredIncidents, "green"],
-        ].map(([label, sub, value, color]) => (
-          <KpiCard key={label} label={label} sub={sub} value={value} color={color} />
-        ))}
-        {p && (
-          <div className="card" style={{ fontSize: 12, color: "var(--muted)" }}>
-            Last prediction:{" "}
-            {p.mlProcessedAt ? new Date(p.mlProcessedAt).toLocaleString() : "—"} · Status:{" "}
-            <strong>{p.overallSystemStatus}</strong>
-          </div>
-        )}
+      {/* ── KPI metrics ── */}
+      <div className="kpi-grid">
+        <KpiCard label="Leak incidents"      value={c.leakIncidents}               sub="Total detected"              color="red" />
+        <KpiCard label="Open for proposals"  value={c.submittedProposals != null ? openCount : "—"} sub="Awaiting plumber assignment"  color="amber" />
+        <KpiCard label="Active assignments"  value={c.activeAssignments}           sub="Repairs in progress"         color="blue" />
+        <KpiCard label="Pending plumbers"    value={c.pendingPlumbers}             sub="Awaiting approval"           color="violet" />
+        <KpiCard label="Proposals received"  value={c.submittedProposals}          sub="Waiting for review"          color="teal" />
+        <KpiCard label="Awaiting verify"     value={c.repairsAwaitingVerification} sub="Recovery checks needed"      color="amber" />
+        <KpiCard label="Recovered"           value={c.recoveredIncidents}          sub="Successfully resolved"       color="green" />
       </div>
 
-      {/* Critical banner */}
+      {/* ── Critical alert banner ── */}
       {openCount > 0 && (
         <div className="alert-banner">
-          <div>
-            <h3><Icon name="alerts" /> Leak detected — action required</h3>
-            <p>
-              {openCount} incident{openCount > 1 ? "s are" : " is"} open for proposals. Review
-              sensor data below and assign a plumber.
-            </p>
+          <div className="ab-icon">🚨</div>
+          <div className="ab-body">
+            <div className="ab-title">Critical leak{openCount > 1 ? "s" : ""} require plumber assignment</div>
+            <div className="ab-sub">
+              {openCount} incident{openCount > 1 ? "s are" : " is"} open for proposals.
+              Review sensor data and assign an available plumber.
+            </div>
           </div>
-          <button
-            className="btn"
-            style={{ background: "var(--danger)", flexShrink: 0 }}
-            onClick={() => setLeakFilter("OPEN_FOR_PROPOSALS")}
-          >
-            View incidents &amp; assign →
+          <button className="btn btn-danger" onClick={() => setLeakFilter("OPEN_FOR_PROPOSALS")}>
+            View incidents →
           </button>
         </div>
       )}
 
-      {/* Leak incidents */}
+      {/* ── Leak incidents ── */}
       <section>
         <div className="sec-header">
-          <span className="sec-title">Leak incidents</span>
-          <select
-            value={leakFilter}
-            onChange={(e) => setLeakFilter(e.target.value)}
-            aria-label="Filter incidents"
-          >
+          <span className="sec-title"><Icon name="alerts" /> Leak incidents</span>
+          <select value={leakFilter} onChange={e => setLeakFilter(e.target.value)} className="filter-select">
             <option value="OPEN_FOR_PROPOSALS">Open for proposals</option>
             <option value="">All incidents</option>
             <option value="ASSIGNED">Assigned</option>
@@ -502,322 +556,236 @@ export default function AdminPage() {
             <option value="VERIFYING_RECOVERY">Verifying recovery</option>
             <option value="RECOVERED">Recovered</option>
             <option value="DETECTED">Detected</option>
+            <option value="CANCELLED">Cancelled</option>
           </select>
         </div>
         {leaksLoading ? (
           <Loading />
-        ) : (leaksData?.data || []).length === 0 ? (
-          <Card>
-            <p className="empty">No incidents found for this filter.</p>
-          </Card>
+        ) : leaks.length === 0 ? (
+          <Card><p className="empty">No incidents found for this filter.</p></Card>
         ) : (
           <div className="stack">
-            {(leaksData.data || []).map((leak) => (
-              <IncidentCard
-                key={leak._id}
-                leak={leak}
-                onAction={({ reload, message, ok } = {}) => {
-                  if (message) setPageMsg({ text: message, ok: !!ok });
-                  if (reload) {
-                    reloadLeaks();
-                    reloadAssignments();
-                    reloadDash();
-                  }
-                }}
-              />
+            {leaks.map(leak => (
+              <IncidentCard key={leak._id} leak={leak} onAction={handleAction} />
             ))}
           </div>
         )}
       </section>
 
-      {/* Active assignments */}
+      {/* ── Active assignments ── */}
       <section>
         <div className="sec-header">
-          <span className="sec-title">Active assignments</span>
+          <span className="sec-title"><Icon name="repair" /> Active assignments</span>
         </div>
-        <div className="stack">
-          {(assignmentsData?.data || []).length === 0 ? (
-            <Card>
-              <p className="empty">No active assignments.</p>
-            </Card>
-          ) : (
-            (assignmentsData.data || []).map((item) => {
-              const inc = item.incidentId || {};
-              return (
-                <div className="assign-card" key={item._id}>
-                  <div className="ac-head">
-                    <strong>
-                      {inc.incidentId || "Incident"} · {(inc.severity || "").toUpperCase()} severity
-                    </strong>
-                    <Badge tone={ASSIGN_BADGE[item.status] || "gray"}>
-                      {item.status.replace(/_/g, " ")}
-                    </Badge>
-                  </div>
-                  <div style={{ fontSize: 13 }}>
-                    <strong>Plumber:</strong> {item.plumberId?.name || "—"} &nbsp;
-                    <strong>Total:</strong> ₹
-                    {item.selectedProposalId?.totalEstimatedCharges ?? "—"} &nbsp;
-                    <strong>Assigned:</strong>{" "}
-                    {item.assignedAt ? new Date(item.assignedAt).toLocaleDateString() : "—"}
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
+        {assigns.length === 0 ? (
+          <Card><p className="empty">No active assignments.</p></Card>
+        ) : (
+          <div className="stack">
+            {assigns.map(item => (
+              <AssignmentCard key={item._id} item={item} onReassign={() => { reloadAssign(); reloadLeaks(); reloadDash(); }} />
+            ))}
+          </div>
+        )}
       </section>
 
-      {/* Plumber management */}
+      {/* ── Plumber approvals ── */}
       <section>
         <div className="sec-header">
-          <span className="sec-title">Plumber approvals</span>
-          <select
-            value={plumberFilter}
-            onChange={(e) => setPlumberFilter(e.target.value)}
-          >
+          <span className="sec-title">👷 Plumber approvals</span>
+          <select value={plumberFilter} onChange={e => setPlumberFilter(e.target.value)} className="filter-select">
             <option value="pending">Pending approval</option>
             <option value="approved">Approved</option>
             <option value="rejected">Rejected</option>
             <option value="suspended">Suspended</option>
           </select>
         </div>
-        <div className="stack">
-          {(plumbersData?.data || []).length === 0 ? (
-            <Card>
-              <p className="empty">No plumbers in this status.</p>
-            </Card>
-          ) : (
-            (plumbersData.data || []).map((profile) => {
-              const user = profile.userId || {};
-              const st = profile.approvalStatus;
-              return (
-                <div className="plumber-card" key={profile._id}>
-                  <div className="pc-info">
-                    <h3>
-                      {user.name || "—"}{" "}
-                      <Badge tone={STATUS_BADGE_PLUMBER[st] || "gray"} style={{ marginLeft: 6 }}>
-                        {st}
-                      </Badge>
-                    </h3>
-                    <p>
-                      {user.email} · {profile.phone || "—"}
-                    </p>
-                    <p>
-                      {profile.city || ""}, {profile.state || ""} · {profile.experienceYears || 0} yrs ·{" "}
-                      {(profile.skills || []).join(", ") || "—"}
-                    </p>
-                  </div>
-                  <div className="pc-actions">
-                    {st === "pending" && (
-                      <>
-                        <button
-                          className="btn"
-                          style={{ background: "var(--success)" }}
-                          onClick={() => handlePlumberAction(profile._id, "approve")}
-                        >
-                          Approve
-                        </button>
-                        <button
-                          className="btn btn-ghost"
-                          style={{ color: "var(--danger)", borderColor: "var(--danger-bd)" }}
-                          onClick={() => handlePlumberAction(profile._id, "reject")}
-                        >
-                          Reject
-                        </button>
-                      </>
-                    )}
-                    {st === "approved" && (
-                      <button
-                        className="btn btn-ghost"
-                        onClick={() => handlePlumberAction(profile._id, "suspend")}
-                      >
-                        Suspend
-                      </button>
-                    )}
-                    {st === "suspended" && (
-                      <button
-                        className="btn btn-ghost"
-                        onClick={() => handlePlumberAction(profile._id, "reactivate")}
-                      >
-                        Reactivate
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
+        {plumbers.length === 0 ? (
+          <Card><p className="empty">No plumbers in this status.</p></Card>
+        ) : (
+          <div className="stack">
+            {plumbers.map(p => (
+              <PlumberCard key={p._id} profile={p} onUpdate={() => { reloadPlumbers(); reloadDash(); }} />
+            ))}
+          </div>
+        )}
       </section>
 
-      {/* Invite plumber */}
+      {/* ── Invite plumber ── */}
       <section>
-        <div className="sec-header">
-          <span className="sec-title">Invite trusted plumber</span>
-        </div>
+        <div className="sec-header"><span className="sec-title">📨 Invite trusted plumber</span></div>
         <Card>
           <form className="form-grid" onSubmit={handleInvite}>
-            {[
-              ["Name", "name", "text", true, 2, 100],
-              ["Email", "email", "email", true, null, 254],
-              ["Phone", "phone", "tel", true, 7, 30],
-              ["City", "city", "text", true, null, 100],
-              ["State / region", "state", "text", true, null, 100],
-              ["Service radius (km)", "serviceRadiusKm", "number", true, null, null],
-              ["Experience (years)", "experienceYears", "number", false, null, null],
-              ["Skills (comma separated)", "skillsText", "text", false, null, null],
-            ].map(([label, name, type, required, min, max]) => (
-              <label key={name} style={{ display: "grid", gap: 5, fontSize: 13, fontWeight: 600 }}>
+            {[["Full name","name","text",true],["Email","email","email",true],["Phone","phone","tel",true],["City","city","text",true],["State / region","state","text",true],["Service radius (km)","serviceRadiusKm","number",true],["Experience (years)","experienceYears","number",false],["Skills (comma-separated)","skillsText","text",false]].map(([label,name,type,req]) => (
+              <label key={name} className="form-field">
                 {label}
-                <input
-                  name={name}
-                  type={type}
-                  required={required}
-                  minLength={min}
-                  maxLength={max}
-                  defaultValue={name === "serviceRadiusKm" ? 25 : name === "experienceYears" ? 0 : undefined}
-                  style={{ padding: "8px 10px", border: "1px solid var(--border-2)", borderRadius: "var(--radius)", font: "inherit" }}
-                />
+                <input name={name} type={type} required={req}
+                  defaultValue={name==="serviceRadiusKm"?25:name==="experienceYears"?0:undefined} />
               </label>
             ))}
-            <label style={{ gridColumn: "1/-1", display: "grid", gap: 5, fontSize: 13, fontWeight: 600 }}>
+            <label className="form-field wide">
               Address
-              <input
-                name="address"
-                maxLength={200}
-                style={{ padding: "8px 10px", border: "1px solid var(--border-2)", borderRadius: "var(--radius)", font: "inherit" }}
-              />
+              <input name="address" maxLength={200} />
             </label>
-            <button className="btn" type="submit" style={{ gridColumn: "1/-1" }}>
-              Send invitation
-            </button>
+            <button className="btn wide" type="submit">Send invitation</button>
           </form>
         </Card>
       </section>
 
-      {/* Owner email */}
+      {/* ── Owner email ── */}
       <section>
-        <div className="sec-header">
-          <span className="sec-title">Critical alert email recipient</span>
-        </div>
+        <div className="sec-header"><span className="sec-title">📧 Critical alert email recipient</span></div>
         <Card>
-          <p style={{ marginBottom: 14, fontSize: 13, color: "var(--muted)" }}>
-            This address receives critical leak alerts via email.
+          <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 14 }}>
+            This address receives critical leak alert emails when a new incident is detected.
           </p>
-          <form
-            className="form-grid"
-            onSubmit={handleOwnerSave}
-          >
-            <label style={{ display: "grid", gap: 5, fontSize: 13, fontWeight: 600 }}>
+          <form className="form-grid" onSubmit={saveOwner}>
+            <label className="form-field">
               Owner name
-              <input
-                type="text"
-                required
-                maxLength={100}
-                value={ownerName}
-                onChange={(e) => setOwnerName(e.target.value)}
-                style={{ padding: "8px 10px", border: "1px solid var(--border-2)", borderRadius: "var(--radius)", font: "inherit" }}
-              />
+              <input type="text" required maxLength={100} value={ownerName} onChange={e => setOwnerName(e.target.value)} />
             </label>
-            <label style={{ display: "grid", gap: 5, fontSize: 13, fontWeight: 600 }}>
+            <label className="form-field">
               Owner email
-              <input
-                type="email"
-                required
-                maxLength={254}
-                value={ownerEmail}
-                onChange={(e) => setOwnerEmail(e.target.value)}
-                style={{ padding: "8px 10px", border: "1px solid var(--border-2)", borderRadius: "var(--radius)", font: "inherit" }}
-              />
+              <input type="email" required maxLength={254} value={ownerEmail} onChange={e => setOwnerEmail(e.target.value)} />
             </label>
-            <button className="btn" type="submit" style={{ gridColumn: "1/-1" }}>
-              Save
-            </button>
+            <button className="btn wide" type="submit">Save</button>
           </form>
-          {ownerMsg.text && (
-            <Message kind={ownerMsg.ok ? "success" : "error"}>{ownerMsg.text}</Message>
-          )}
+          {ownerMsg.text && <Message kind={ownerMsg.ok ? "success" : "error"}>{ownerMsg.text}</Message>}
         </Card>
       </section>
 
-      {/* Audit log */}
+      {/* ── Audit log ── */}
       <section>
-        <div className="sec-header">
-          <span className="sec-title">Recent activity</span>
-        </div>
-        <div className="stack">
-          {(auditData?.data || []).length === 0 ? (
-            <Card>
-              <p className="empty">No audit entries yet.</p>
-            </Card>
-          ) : (
-            (auditData.data || []).map((r) => (
+        <div className="sec-header"><span className="sec-title"><Icon name="document" /> Recent activity</span></div>
+        {audits.length === 0 ? (
+          <Card><p className="empty">No audit entries yet.</p></Card>
+        ) : (
+          <div className="stack">
+            {audits.map(r => (
               <Card key={r._id}>
                 <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
                   <strong style={{ fontSize: 13 }}>{r.action}</strong>
-                  <span style={{ fontSize: 12, color: "var(--muted)" }}>
-                    {new Date(r.createdAt).toLocaleString()}
-                  </span>
+                  <span style={{ fontSize: 12, color: "var(--muted)" }}>{formatDate(r.createdAt)}</span>
                 </div>
                 <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
                   {r.actorUserId?.name || "System"} · {r.entityType || ""} {r.entityId || ""}
                 </div>
               </Card>
-            ))
-          )}
-        </div>
+            ))}
+          </div>
+        )}
       </section>
 
-      <style>{`
-        .stack { display: grid; gap: 12px; }
-        .sec-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-        .sec-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
-        .g4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; }
-        @media(max-width:1200px) { .g4 { grid-template-columns: repeat(2,1fr); } }
-        @media(max-width:600px)  { .g4 { grid-template-columns: 1fr; } }
-
-        .alert-banner { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; padding:18px 22px; border-radius:8px; border:1.5px solid var(--danger-bd); background:var(--danger-bg); }
-        .alert-banner h3 { color:var(--danger); font-size:15px; margin-bottom:3px; }
-        .alert-banner p  { color:#7f1d1d; font-size:13px; margin:0; }
-
-        .incident-card { background:#fff; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
-        .ic-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:16px 18px 12px; flex-wrap:wrap; }
-        .ic-title { font-size:15px; font-weight:700; margin-bottom:4px; }
-        .ic-meta  { font-size:12px; color:var(--muted); display:flex; flex-wrap:wrap; gap:12px; }
-        .ic-sensors { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; padding:0 18px 14px; }
-        .sensor-box { background:var(--surface-2); border:1px solid var(--border); border-radius:6px; padding:10px 12px; text-align:center; }
-        .sb-val  { font-size:18px; font-weight:700; }
-        .sb-unit { font-size:10px; color:var(--muted); margin-top:2px; text-transform:uppercase; letter-spacing:.04em; }
-        .ic-actions { display:flex; gap:8px; flex-wrap:wrap; padding:10px 18px 14px; border-top:1px solid var(--border); background:var(--surface-2); }
-        @media(max-width:600px) { .ic-sensors { grid-template-columns: repeat(2,1fr); } }
-
-        .proposals-panel { border-top:2px solid var(--border); background:#fff; }
-        .pp-title { padding:12px 18px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); border-bottom:1px solid var(--border); }
-        .pp-empty { padding:24px 18px; font-size:13px; color:var(--muted); }
-        .proposal-row { display:grid; grid-template-columns:1fr auto; gap:12px; align-items:start; padding:14px 18px; border-bottom:1px solid var(--border); }
-        .proposal-row:last-child { border-bottom:none; }
-        .pr-name    { font-weight:700; font-size:14px; margin-bottom:3px; }
-        .pr-method  { font-size:13px; color:var(--text-2); margin-bottom:6px; }
-        .pr-costs   { display:flex; flex-wrap:wrap; gap:10px 20px; font-size:12px; color:var(--muted); }
-        .pr-costs strong { color:var(--text); font-weight:700; }
-        .pr-warranty { font-size:12px; color:var(--muted); margin-top:4px; }
-        .pr-profile  { font-size:12px; color:var(--muted); margin-top:2px; }
-        .pr-assign-col { display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
-        .pr-total { font-size:16px; font-weight:800; color:var(--success); white-space:nowrap; }
-        .pr-best  { font-size:10px; color:var(--success); font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
-        @media(max-width:600px) { .proposal-row { grid-template-columns:1fr; } .pr-assign-col { align-items:flex-start; } }
-
-        .assign-card { background:#fff; border:1px solid var(--border); border-radius:8px; padding:16px 18px; }
-        .ac-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:8px; }
-        .ac-head strong { font-size:14px; }
-
-        .plumber-card { background:#fff; border:1px solid var(--border); border-radius:8px; padding:16px 18px; display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; }
-        .pc-info h3   { font-size:14px; font-weight:700; margin-bottom:4px; }
-        .pc-info p    { font-size:12px; color:var(--muted); }
-        .pc-actions   { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-        .form-grid    { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
-        @media(max-width:600px) { .form-grid { grid-template-columns:1fr; } }
-      `}</style>
+      <AdminStyles />
     </>
+  );
+}
+
+// ── Scoped styles ─────────────────────────────────────────────────────────
+function AdminStyles() {
+  return (
+    <style>{`
+      /* Layout */
+      .kpi-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:12px; }
+      @media(max-width:1400px){ .kpi-grid{grid-template-columns:repeat(4,1fr);} }
+      @media(max-width:900px) { .kpi-grid{grid-template-columns:repeat(2,1fr);} }
+      @media(max-width:500px) { .kpi-grid{grid-template-columns:1fr;} }
+      .stack { display:grid; gap:12px; }
+      .sec-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+      .sec-title  { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); display:flex; align-items:center; gap:6px; }
+      .filter-select { border:1px solid var(--border-2); border-radius:var(--radius); padding:6px 10px; font-size:12px; font-family:inherit; background:var(--surface); cursor:pointer; }
+
+      /* Buttons */
+      .btn-warning  { background:var(--warning)!important; }
+      .btn-success  { background:var(--success)!important; }
+      .btn-danger   { background:var(--danger)!important;  }
+      .btn-outline-primary { background:transparent!important; color:var(--primary)!important; border:1.5px solid var(--primary)!important; }
+      .btn-ghost.btn-danger { color:var(--danger)!important; border-color:var(--danger-bd)!important; }
+      .btn-sm { padding:5px 10px!important; font-size:12px!important; }
+      .btn-assign { background:var(--primary); color:#fff; border:none; border-radius:var(--radius); padding:8px 16px; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:6px; white-space:nowrap; }
+      .btn-assign:hover { background:var(--primary-h); }
+      .btn-assign:disabled { opacity:.5; cursor:default; }
+
+      /* Alert banner */
+      .alert-banner { display:flex; align-items:center; gap:16px; padding:18px 22px; border-radius:8px; border:1.5px solid var(--danger-bd); background:var(--danger-bg); flex-wrap:wrap; }
+      .ab-icon  { font-size:28px; flex-shrink:0; }
+      .ab-body  { flex:1; min-width:0; }
+      .ab-title { font-size:15px; font-weight:700; color:var(--danger); margin-bottom:3px; }
+      .ab-sub   { font-size:13px; color:#7f1d1d; }
+
+      /* Incident card */
+      .incident-card { background:#fff; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+      .ic-head  { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:16px 18px 10px; flex-wrap:wrap; }
+      .ic-head-left {}
+      .ic-title { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
+      .ic-id    { font-size:15px; font-weight:700; }
+      .ic-crit-tag { background:var(--danger-bg); color:var(--danger); font-size:11px; font-weight:800; padding:2px 8px; border-radius:4px; border:1px solid var(--danger-bd); }
+      .ic-meta  { display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:12px; color:var(--muted); }
+      .ic-needs-action { font-size:11px; font-weight:700; color:var(--danger); text-transform:uppercase; letter-spacing:.05em; display:flex; align-items:center; gap:4px; }
+      .ic-sensors { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; padding:0 18px 12px; }
+      @media(max-width:600px){ .ic-sensors{grid-template-columns:repeat(2,1fr);} }
+      .sensor-box  { background:var(--surface-2); border:1px solid var(--border); border-radius:6px; padding:10px 12px; text-align:center; }
+      .sb-val  { font-size:18px; font-weight:700; }
+      .sb-unit { font-size:10px; color:var(--muted); margin-top:2px; text-transform:uppercase; letter-spacing:.04em; }
+      .ic-actions { display:flex; gap:8px; flex-wrap:wrap; padding:10px 18px 14px; border-top:1px solid var(--border); background:var(--surface-2); }
+
+      /* Proposals panel */
+      .proposals-panel { border-top:2px solid var(--border-2); background:#fff; }
+      .pp-header { padding:12px 18px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:6px; }
+      .pp-empty  { padding:20px 18px; font-size:13px; color:var(--muted); }
+      .proposal-row { border-bottom:1px solid var(--border); padding:16px 18px; display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap; transition:background .1s; }
+      .proposal-row:last-child { border-bottom:none; }
+      .proposal-row:hover { background:var(--surface-2); }
+      .proposal-best { background:#fffbeb; border-left:3px solid #f59e0b; }
+      .pr-best-tag { font-size:11px; font-weight:700; color:#92400e; background:#fef3c7; border:1px solid #fde68a; padding:2px 8px; border-radius:4px; margin-bottom:6px; display:inline-block; }
+      .pr-body  { flex:1; min-width:0; }
+      .pr-top   { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:6px; flex-wrap:wrap; }
+      .pr-name  { font-size:14px; font-weight:700; }
+      .pr-email { font-size:12px; color:var(--muted); }
+      .pr-total-col { text-align:right; flex-shrink:0; }
+      .pr-total    { font-size:18px; font-weight:800; color:var(--success); }
+      .pr-duration { font-size:12px; color:var(--muted); }
+      .pr-method   { font-size:13px; color:var(--text-2); margin-bottom:8px; }
+      .pr-costs    { display:flex; flex-wrap:wrap; gap:6px 18px; font-size:12px; color:var(--muted); margin-bottom:6px; }
+      .pr-costs strong { color:var(--text); font-weight:700; }
+      .pr-profile, .pr-warranty, .pr-notes { font-size:12px; color:var(--muted); margin-top:4px; }
+      .pr-actions { display:flex; flex-direction:column; align-items:flex-end; gap:6px; flex-shrink:0; }
+
+      /* Assignment card */
+      .assign-card { background:#fff; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+      .ac-steps { display:flex; border-bottom:1px solid var(--border); }
+      .ac-step  { flex:1; padding:8px 6px; text-align:center; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; background:var(--surface-2); color:var(--muted); border-right:1px solid var(--border); }
+      .ac-step:last-child { border-right:none; }
+      .ac-step.done   { background:var(--success-bg); color:var(--success); }
+      .ac-step.active { background:var(--primary); color:#fff; }
+      .ac-body    { padding:16px 18px; }
+      .ac-head    { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:12px; flex-wrap:wrap; }
+      .ac-title   { font-size:14px; font-weight:700; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+      .ac-meta    { font-size:12px; color:var(--muted); margin-top:3px; }
+      .ac-plumber { display:flex; align-items:center; gap:10px; background:var(--surface-2); border:1px solid var(--border); border-radius:6px; padding:10px 14px; margin-bottom:10px; }
+      .ac-plumber-icon { font-size:20px; flex-shrink:0; }
+      .ac-plumber-name  { font-size:14px; font-weight:700; }
+      .ac-plumber-email { font-size:12px; color:var(--muted); }
+      .ac-amount  { margin-left:auto; font-size:16px; font-weight:700; color:var(--success); flex-shrink:0; }
+      .ac-method  { font-size:13px; color:var(--text-2); margin-bottom:8px; }
+      .ac-actions { display:flex; gap:8px; flex-wrap:wrap; padding-top:10px; border-top:1px solid var(--border); margin-top:10px; }
+
+      /* Plumber card */
+      .plumber-card { background:#fff; border:1px solid var(--border); border-radius:8px; padding:16px 18px; display:flex; align-items:flex-start; gap:14px; flex-wrap:wrap; }
+      .pc-avatar    { font-size:28px; flex-shrink:0; }
+      .pc-info      { flex:1; min-width:0; }
+      .pc-name      { font-size:14px; font-weight:700; display:flex; align-items:center; flex-wrap:wrap; gap:4px; margin-bottom:3px; }
+      .pc-email     { font-size:12px; color:var(--muted); margin-bottom:3px; }
+      .pc-details   { font-size:12px; color:var(--muted); margin-bottom:5px; }
+      .pc-skills    { display:flex; flex-wrap:wrap; gap:4px; }
+      .skill-tag    { background:var(--surface-2); border:1px solid var(--border-2); border-radius:4px; padding:2px 7px; font-size:11px; color:var(--text-2); }
+      .pc-actions   { display:flex; gap:8px; align-items:center; flex-shrink:0; flex-wrap:wrap; }
+
+      /* Form */
+      .form-grid  { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+      .form-field { display:grid; gap:5px; font-size:13px; font-weight:600; }
+      .form-field input, .form-field select { padding:8px 10px; border:1px solid var(--border-2); border-radius:var(--radius); font:inherit; font-size:13px; }
+      .form-field.wide, .wide { grid-column:1/-1; }
+      @media(max-width:600px){ .form-grid{grid-template-columns:1fr;} }
+    `}</style>
   );
 }

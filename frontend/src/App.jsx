@@ -289,12 +289,16 @@ export function Loading({ text = "Loading…" }) {
   );
 }
 
-export function Message({ children, kind = "error" }) {
-  return children ? (
-    <div className={`message ${kind}`} role="status">
-      {children}
+export function Message({ children, kind = "error", onDismiss }) {
+  if (!children) return null;
+  return (
+    <div className={`message ${kind}`} role="status" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+      <span>{children}</span>
+      {onDismiss && (
+        <button onClick={onDismiss} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, lineHeight: 1, color: "inherit", flexShrink: 0, padding: 0 }} aria-label="Dismiss">✕</button>
+      )}
     </div>
-  ) : null;
+  );
 }
 
 export function PageHeading({ title, description, action }) {
